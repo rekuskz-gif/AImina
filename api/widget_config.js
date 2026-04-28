@@ -21,14 +21,11 @@ module.exports = async (req, res) => {
 
     const allRows = await sheet.getRows();
 
-    if (!allRows || allRows.length < 2) {
+    if (!allRows || allRows.length === 0) {
       return res.status(404).json({ error: "Нет данных на листе" });
     }
 
-    // Пропускаем только 1 строку с названиями колонок
-    const rows = allRows.slice(1);
-
-    const config = rows.find(row => row.get('clientId') === clientId);
+    const config = allRows.find(row => row.get('clientId') === clientId);
     if (!config) {
       return res.status(404).json({ error: `Клиент ${clientId} не найден` });
     }
