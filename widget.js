@@ -1,11 +1,4 @@
 (function() {
-    // CORS FIX
-    const scriptTag = document.currentScript;
-    const clientId = scriptTag.getAttribute('data-client-id') || 'mina_001';
-    const backendUrl = 'https://ai--mina.vercel.app';
-
-
-(function() {
     const scriptTag = document.currentScript;
     const clientId = scriptTag.getAttribute('data-client-id') || 'mina_001';
     const backendUrl = 'https://ai--mina.vercel.app';
@@ -14,7 +7,6 @@
         try {
             console.log('Загружаю конфиг для:', clientId);
             
-            // ЗАПРАШИВАЕМ КОНФИГ
             const response = await fetch(`${backendUrl}/api/widget_config?clientId=${clientId}`);
             if (!response.ok) {
                 throw new Error(`API ошибка: ${response.status}`);
@@ -23,7 +15,6 @@
             const config = await response.json();
             console.log('Конфиг загружен:', config);
 
-            // СТИЛИ
             const style = document.createElement('style');
             style.textContent = `
                 @keyframes pulse {
@@ -62,7 +53,6 @@
             `;
             document.head.appendChild(style);
 
-            // ЭЛЕМЕНТЫ
             const widget = document.createElement('div');
             widget.className = 'amina-widget';
             
@@ -91,7 +81,6 @@
             widget.appendChild(btn);
             document.body.appendChild(widget);
 
-            // ПЕЧАТАНИЕ
             async function typeText() {
                 label.classList.add('visible');
                 
