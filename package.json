@@ -1,1 +1,9 @@
-
+{
+  "name": "almina-ai",
+  "version": "1.0.0",
+  "dependencies": {
+    "google-spreadsheet": "^4.1.1",
+    "google-auth-library": "^9.4.1",
+    "node-fetch": "^2.7.0"
+  }
+}
