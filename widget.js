@@ -1,39 +1,34 @@
 (function() {
-    // 1. ПОЛУЧАЕМ НАСТРОЙКИ С САЙТА КЛИЕНТА
     const scriptTag = document.currentScript;
     const clientId = scriptTag.getAttribute('data-client-id') || 'default';
-    // URL вашего бэкенда на Vercel (замените на свой после деплоя)
     const backendUrl = 'https://ai--mina.vercel.app'; 
 
     async function initMina() {
         try {
-            // 2. ЗАПРОС НАСТРОЕК ИЗ GOOGLE ТАБЛИЦЫ
-            const response = await fetch(`${backendUrl}?clientId=${clientId}`);
+            // ⬇️ ПРАВИЛЬНЫЙ URL К API
+            const response = await fetch(`${backendUrl}/api/chat_config?clientId=${clientId}`);
             if (!response.ok) throw new Error('Config not found');
             const config = await response.json();
 
-            // 3. ДОБАВЛЯЕМ СТИЛИ (скелет + переменные из таблицы)
             const style = document.createElement('style');
             style.textContent = `
                 @keyframes pulse {
-                    0% { box-shadow: 0 0 0 0 ${config.colorStart}B3; }
+                    0% { box-shadow: 0 0 0 0 ${config.headerColor}B3; }
                     70% { box-shadow: 0 0 0 15px rgba(0,0,0,0); }
                     100% { box-shadow: 0 0 0 0 rgba(0,0,0,0); }
                 }
                 .amina-widget {
                     position: fixed;
-                    bottom: ${config.bottomSpacing || '20px'};
-                    right: ${config.position === 'left' ? 'auto' : '20px'};
-                    left: ${config.position === 'left' ? '20px' : 'auto'};
+                    bottom: 20px;
+                    right: 20px;
                     z-index: 9999;
                     display: flex;
                     align-items: center;
                     gap: 10px;
-                    flex-direction: ${config.position === 'left' ? 'row-reverse' : 'row'};
                 }
                 .amina-btn {
                     width: 120px; height: 120px; border-radius: 50%;
-                    background: linear-gradient(135deg, ${config.colorStart}, ${config.colorEnd});
+                    background: linear-gradient(135deg, #7c3aed, #4f46e5);
                     border: none; cursor: pointer; padding: 0;
                     animation: pulse 2s infinite; display: flex;
                     align-items: center; justify-content: center;
@@ -49,13 +44,10 @@
                     transition: all 0.5s; cursor: pointer;
                 }
                 .amina-label.visible { opacity: 1; }
-                .amina-name { display: block; font-size: 12px; color: #666; margin-top: 6px; font-weight: normal; }
-                .cursor { display: inline-block; width: 2px; height: 14px; background: #333; margin-left: 2px; animation: blink 0.6s infinite; }
-                @keyframes blink { 0%, 49% { opacity: 1; } 50%, 100% { opacity: 0; } }
+                .amina-name { display: block; font-size: 12px; color: #666; margin-top: 6px; }
             `;
             document.head.appendChild(style);
 
-            // 4. СОЗДАЕМ ЭЛЕМЕНТЫ
             const widget = document.createElement('div');
             widget.className = 'amina-widget';
             
@@ -71,11 +63,11 @@
 
             const btn = document.createElement('button');
             btn.className = 'amina-btn';
-            btn.innerHTML = `<img src="${config.avatarUrl}" alt="${config.botName}">`;
+            btn.innerHTML = `<img src="${config.avatarUrl || 'https://via.placeholder.com/100'}" alt="${config.botName}">`;
 
-            // ФУНКЦИЯ ОТКРЫТИЯ ЧАТА
+            // ⬇️ ПРАВИЛЬНЫЙ URL ОКНА ЧАТА
             const openChat = () => {
-                window.open(`https://vercel.app{clientId}`, 'amina', 'width=680,height=800');
+                window.open(`${backendUrl}/chat_window.html?clientId=${clientId}`, 'amina', 'width=680,height=800');
             };
 
             btn.onclick = openChat;
@@ -85,26 +77,26 @@
             widget.appendChild(btn);
             document.body.appendChild(widget);
 
-            // 5. ЛОГИКА ПЕЧАТАНИЯ (эффект из вашего кода)
             async function typeText() {
                 label.classList.add('visible');
                 
-                // Печатаем текст 1
-                for (let char of config.text1) {
-                    textSpan.textContent += char;
-                    await new Promise(r => setTimeout(r, Math.random() * 50 + 50));
+                if (config.text1) {
+                    for (let char of config.text1) {
+                        textSpan.textContent += char;
+                        await new Promise(r => setTimeout(r, Math.random() * 50 + 50));
+                    }
+                    await new Promise(r => setTimeout(r, 2000));
                 }
                 
-                await new Promise(r => setTimeout(r, 2000)); // Пауза
-                
-                // Печатаем текст 2
                 textSpan.textContent = '';
-                for (let char of config.text2) {
-                    textSpan.textContent += char;
-                    await new Promise(r => setTimeout(r, Math.random() * 50 + 50));
+                if (config.text2) {
+                    for (let char of config.text2) {
+                        textSpan.textContent += char;
+                        await new Promise(r => setTimeout(r, Math.random() * 50 + 50));
+                    }
                 }
                 
-                nameDiv.textContent = config.botName;
+                nameDiv.textContent = config.botName || 'AI Mina';
             }
 
             typeText();
