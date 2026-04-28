@@ -26,8 +26,7 @@ module.exports = async (req, res) => {
     const doc = new GoogleSpreadsheet(process.env.GOOGLE_SHEET_ID, auth);
     await doc.loadInfo();
 
-    // ⬇️ ЧИТАЕМ С ЛИСТА "authentication"
-    const sheet = doc.sheetsByTitle['authentication']; 
+    const sheet = doc.sheetsByTitle['Authentication']; 
     const rows = await sheet.getRows();
     const config = rows.find(row => row.get('clientId') === clientId);
 
