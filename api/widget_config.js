@@ -22,7 +22,7 @@ module.exports = async (req, res) => {
 
     const sheet = doc.sheetsByTitle['Widget'];
     // startIndex: 2 = начинаем со строки 3 (пропускаем первые 2 строки)
-    const rows = await sheet.getRows({ startIndex: 4 });
+    const rows = await sheet.getRows({ startIndex: 2 });
     
     if (!rows || rows.length === 0) {
       return res.status(404).json({ error: "Нет данных на листе" });
