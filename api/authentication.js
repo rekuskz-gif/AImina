@@ -2,60 +2,87 @@ const { GoogleSpreadsheet } = require('google-spreadsheet');
 const { JWT } = require('google-auth-library');
 
 module.exports = async (req, res) => {
-  // Настройка CORS для безопасности
+  // ⬇️ CORS ЗАГОЛОВКИ (ОБЯЗАТЕЛЬНО В НАЧАЛЕ)
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, GET, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
-  if (req.method === 'OPTIONS') return res.status(200).end();
+  // Если браузер проверяет доступ (OPTIONS запрос)
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
 
   try {
     const { clientId, messages } = req.body;
-    if (!clientId || !messages) return res.status(400).json({ error: "Данные не полные" });
+    
+    if (!clientId || !messages) {
+      return res.status(400).json({ error: "clientId и messages обязательны" });
+    }
 
     // 1. АВТОРИЗАЦИЯ В GOOGLE
     const auth = new JWT({
       email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
       key: process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, '\n'),
-      scopes: ['https://googleapis.com'],
+      scopes: ['https://www.googleapis.com/auth/spreadsheets'],
     });
 
-    // ВСТАВЬТЕ ID ВАШЕЙ ТАБЛИЦЫ НИЖЕ
-    const doc = new GoogleSpreadsheet('ID_ВАШЕЙ_ТАБЛИЦЫ', auth);
+    // ЗАМЕНИТЕ НА ВАШ ID ТАБЛИЦЫ
+    const doc = new GoogleSpreadsheet(process.env.GOOGLE_SHEET_ID, auth);
     await doc.loadInfo();
 
-    // 2. ПОИСК КЛЮЧЕЙ КЛИЕНТА (Лист Authentication)
+    // 2. ИЩЕМ КОНФИГ КЛИЕНТА НА ЛИСТЕ Authentication
     const sheet = doc.sheetsByTitle['Authentication']; 
     const rows = await sheet.getRows();
     const config = rows.find(row => row.get('clientId') === clientId);
 
-    if (!config || config.get('status') !== 'active') {
-      return res.status(403).json({ error: "Агент не активен или не найден" });
+    if (!config) {
+      return res.status(404).json({ error: "Клиент не найден" });
     }
 
-    // 3. ЗАПРОС К CLAUDE (Используем ключ этого конкретного клиента из таблицы)
-    const response = await fetch('https://anthropic.com', {
+    if (config.get('status') !== 'active') {
+      return res.status(403).json({ error: "Агент не активен" });
+    }
+
+    // 3. ОТПРАВЛЯЕМ ЗАПРОС В CLAUDE
+    const claudeKey = config.get('claudeKey');
+    if (!claudeKey) {
+      return res.status(500).json({ error: "API ключ Claude не найден" });
+    }
+
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
-        'x-api-key': config.get('claudeKey'), // Ключ из таблицы
+        'x-api-key': claudeKey,
         'anthropic-version': '2023-06-01',
         'content-type': 'application/json'
       },
       body: JSON.stringify({
         model: "claude-3-5-sonnet-20240620",
         max_tokens: 1024,
-        system: "Инструкция из Google Doc", // Тут можно добавить подгрузку промпта
+        system: "Ты полезный ИИ ассистент",
         messages: messages
       })
     });
 
     const data = await response.json();
-    
-    // 4. ОТВЕТ НА САЙТ
-    res.status(200).json({ text: data.content[0].text });
+
+    if (!response.ok) {
+      console.error('Claude API Error:', data);
+      return res.status(response.status).json({ error: "Ошибка Claude API", details: data });
+    }
+
+    const botMessage = data.content[0].text;
+
+    // 4. ВОЗВРАЩАЕМ ОТВЕТ
+    return res.status(200).json({ 
+      text: botMessage 
+    });
 
   } catch (error) {
     console.error('Auth Error:', error);
-    res.status(500).json({ error: "Ошибка сервера" });
+    return res.status(500).json({ 
+      error: "Ошибка сервера", 
+      message: error.message 
+    });
   }
 };
