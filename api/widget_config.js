@@ -37,6 +37,8 @@ module.exports = async (req, res) => {
       colorEnd:   config.get('colorEnd'),
       avatarUrl:  config.get('avatarUrl'),
       botName:    config.get('botName'),
+      bgColor:    config.get('bgColor')    || '#ffffff',
+      textColor:  config.get('textColor')  || '#000000',
     });
 
   } catch (error) {
