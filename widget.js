@@ -3,7 +3,7 @@
     const scriptTag = document.currentScript;
     const clientId = scriptTag.getAttribute('data-client-id') || 'default';
     // URL вашего бэкенда на Vercel (замените на свой после деплоя)
-    const backendUrl = 'https://vercel.app'; 
+    const backendUrl = 'https://ai--mina.vercel.app'; 
 
     async function initMina() {
         try {
