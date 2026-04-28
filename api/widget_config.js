@@ -21,11 +21,17 @@ module.exports = async (req, res) => {
     await doc.loadInfo();
 
     const sheet = doc.sheetsByTitle['Widget'];
+    // startIndex: 2 = начинаем со строки 3 (пропускаем первые 2 строки)
     const rows = await sheet.getRows({ startIndex: 2 });
+    
+    if (!rows || rows.length === 0) {
+      return res.status(404).json({ error: "Нет данных на листе" });
+    }
+
     const config = rows.find(row => row.get('clientId') === clientId);
 
     if (!config) {
-      return res.status(404).json({ error: "Клиент не найден" });
+      return res.status(404).json({ error: `Клиент ${clientId} не найден` });
     }
 
     res.status(200).json({
