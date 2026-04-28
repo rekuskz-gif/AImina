@@ -42,14 +42,16 @@
                 .amina-btn:hover { transform: scale(1.05); }
                 .amina-btn img { width: 100px; height: 100px; border-radius: 50%; }
                 .amina-label {
-                    background: white; padding: 12px 16px; border-radius: 8px;
+                    background: ${config.bgColor || '#ffffff'};
+                    padding: 12px 16px; border-radius: 8px;
                     box-shadow: 0 4px 12px rgba(0,0,0,0.1);
                     font-family: Arial, sans-serif; font-size: 13px; font-weight: bold;
-                    color: #333; max-width: 200px; opacity: 0;
+                    color: ${config.textColor || '#333333'};
+                    max-width: 200px; opacity: 0;
                     transition: all 0.5s; cursor: pointer;
                 }
                 .amina-label.visible { opacity: 1; }
-                .amina-name { font-size: 12px; color: #666; margin-top: 6px; }
+                .amina-name { font-size: 12px; color: ${config.textColor || '#666666'}; margin-top: 6px; }
             `;
             document.head.appendChild(style);
 
