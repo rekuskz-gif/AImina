@@ -26,9 +26,9 @@ module.exports = async (req, res) => {
     const doc = new GoogleSpreadsheet(process.env.GOOGLE_SHEET_ID, auth);
     await doc.loadInfo();
 
-    // ⬇️ ЧИТАЕМ С ЛИСТА "Widget-Виджет-Зазывала"
+    // ⬇️ ЧИТАЕМ С ЛИСТА "widget"
     // startIndex: 3 = начинаем со строки 4 (где данные)
-    const sheet = doc.sheetsByTitle['Widget-Виджет-Зазывала']; 
+    const sheet = doc.sheetsByTitle['widget']; 
     const rows = await sheet.getRows({ startIndex: 3 });
     const config = rows.find(row => row.get('clientId') === clientId);
 
