@@ -1,19 +1,26 @@
 (function() {
     const scriptTag = document.currentScript;
-    const clientId = scriptTag.getAttribute('data-client-id') || 'default';
-    const backendUrl = 'https://ai--mina.vercel.app'; 
+    const clientId = scriptTag.getAttribute('data-client-id') || 'mina_001';
+    const backendUrl = 'https://ai--mina.vercel.app';
 
     async function initMina() {
         try {
-            // ⬇️ ПРАВИЛЬНЫЙ URL К API
-            const response = await fetch(`${backendUrl}/api/chat_config?clientId=${clientId}`);
-            if (!response.ok) throw new Error('Config not found');
+            console.log('Загружаю конфиг для:', clientId);
+            
+            // ЗАПРАШИВАЕМ КОНФИГ
+            const response = await fetch(`${backendUrl}/api/widget_config?clientId=${clientId}`);
+            if (!response.ok) {
+                throw new Error(`API ошибка: ${response.status}`);
+            }
+            
             const config = await response.json();
+            console.log('Конфиг загружен:', config);
 
+            // СТИЛИ
             const style = document.createElement('style');
             style.textContent = `
                 @keyframes pulse {
-                    0% { box-shadow: 0 0 0 0 ${config.headerColor}B3; }
+                    0% { box-shadow: 0 0 0 0 ${config.colorStart}B3; }
                     70% { box-shadow: 0 0 0 15px rgba(0,0,0,0); }
                     100% { box-shadow: 0 0 0 0 rgba(0,0,0,0); }
                 }
@@ -28,7 +35,7 @@
                 }
                 .amina-btn {
                     width: 120px; height: 120px; border-radius: 50%;
-                    background: linear-gradient(135deg, #7c3aed, #4f46e5);
+                    background: linear-gradient(135deg, ${config.colorStart}, ${config.colorEnd});
                     border: none; cursor: pointer; padding: 0;
                     animation: pulse 2s infinite; display: flex;
                     align-items: center; justify-content: center;
@@ -38,16 +45,17 @@
                 .amina-btn img { width: 100px; height: 100px; border-radius: 50%; }
                 .amina-label {
                     background: white; padding: 12px 16px; border-radius: 8px;
-                    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+                    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
                     font-family: Arial, sans-serif; font-size: 13px; font-weight: bold;
                     color: #333; max-width: 200px; opacity: 0;
                     transition: all 0.5s; cursor: pointer;
                 }
                 .amina-label.visible { opacity: 1; }
-                .amina-name { display: block; font-size: 12px; color: #666; margin-top: 6px; }
+                .amina-name { font-size: 12px; color: #666; margin-top: 6px; }
             `;
             document.head.appendChild(style);
 
+            // ЭЛЕМЕНТЫ
             const widget = document.createElement('div');
             widget.className = 'amina-widget';
             
@@ -63,9 +71,8 @@
 
             const btn = document.createElement('button');
             btn.className = 'amina-btn';
-            btn.innerHTML = `<img src="${config.avatarUrl || 'https://via.placeholder.com/100'}" alt="${config.botName}">`;
+            btn.innerHTML = `<img src="${config.avatarUrl}" alt="${config.botName}" onerror="this.src='https://via.placeholder.com/100'">`;
 
-            // ⬇️ ПРАВИЛЬНЫЙ URL ОКНА ЧАТА
             const openChat = () => {
                 window.open(`${backendUrl}/chat_window.html?clientId=${clientId}`, 'amina', 'width=680,height=800');
             };
@@ -77,6 +84,7 @@
             widget.appendChild(btn);
             document.body.appendChild(widget);
 
+            // ПЕЧАТАНИЕ
             async function typeText() {
                 label.classList.add('visible');
                 
@@ -96,7 +104,7 @@
                     }
                 }
                 
-                nameDiv.textContent = config.botName || 'AI Mina';
+                nameDiv.textContent = config.botName;
             }
 
             typeText();
@@ -106,5 +114,9 @@
         }
     }
 
-    initMina();
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initMina);
+    } else {
+        initMina();
+    }
 })();
