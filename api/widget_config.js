@@ -1,3 +1,6 @@
+const { GoogleSpreadsheet } = require('google-spreadsheet');
+const { JWT } = require('google-auth-library');
+
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
@@ -8,25 +11,31 @@ module.exports = async (req, res) => {
   try {
     const clientId = req.query.clientId || 'mina_001';
 
-    // ТЕСТОВЫЕ ДАННЫЕ (пока таблица не работает)
-    const testData = {
-      mina_001: {
-        text1: 'Здравствуйте я Амина',
-        text2: 'Могу ответить на вопросы',
-        colorStart: '#7c3aed',
-        colorEnd: '#4f46e5',
-        avatarUrl: 'https://via.placeholder.com/100',
-        botName: 'Амина'
-      }
-    };
+    const auth = new JWT({
+      email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
+      key: process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, '\n'),
+      scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+    });
 
-    const config = testData[clientId];
-    
+    const doc = new GoogleSpreadsheet(process.env.GOOGLE_SHEET_ID, auth);
+    await doc.loadInfo();
+
+    const sheet = doc.sheetsByTitle['Widget'];
+    const rows = await sheet.getRows({ startIndex: 2 });
+    const config = rows.find(row => row.get('clientId') === clientId);
+
     if (!config) {
       return res.status(404).json({ error: "Клиент не найден" });
     }
 
-    res.status(200).json(config);
+    res.status(200).json({
+      text1: config.get('text1'),
+      text2: config.get('text2'),
+      colorStart: config.get('colorStart'),
+      colorEnd: config.get('colorEnd'),
+      avatarUrl: config.get('avatarUrl'),
+      botName: config.get('botName')
+    });
 
   } catch (error) {
     console.error('Error:', error);
