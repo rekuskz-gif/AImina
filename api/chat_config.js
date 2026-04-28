@@ -26,12 +26,12 @@ module.exports = async (req, res) => {
       scopes: ['https://www.googleapis.com/auth/spreadsheets'],
     });
 
-    // ЗАМЕНИТЕ НА ВАШ ID ТАБЛИЦЫ или используйте переменную
+    // ИСПОЛЬЗУЕМ ID ТАБЛИЦЫ ИЗ ПЕРЕМЕННОЙ ОКРУЖЕНИЯ
     const doc = new GoogleSpreadsheet(process.env.GOOGLE_SHEET_ID, auth);
     await doc.loadInfo();
 
-    // 2. ИЩЕМ НА ЛИСТЕ "Chat window-Окно чата"
-    const sheet = doc.sheetsByTitle['Chat window-Окно чата']; 
+    // 2. ИЩЕМ НА ЛИСТЕ "Chat window-Окно переписки"
+    const sheet = doc.sheetsByTitle['Chat window-Окно переписки']; 
     const rows = await sheet.getRows();
     const config = rows.find(row => row.get('clientId') === clientId);
 
