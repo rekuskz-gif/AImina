@@ -21,16 +21,12 @@ module.exports = async (req, res) => {
     await doc.loadInfo();
 
     const sheet = doc.sheetsByTitle['Widget'];
-    // Читаем ВСЕ строки
-    const allRows = await sheet.getRows();
+    const rows = await sheet.getRows();
     
-    if (!allRows || allRows.length < 3) {
+    if (!rows || rows.length === 0) {
       return res.status(404).json({ error: "Нет данных на листе" });
     }
 
-    // ПРОПУСКАЕМ первые 2 строки (индексы 0 и 1)
-    const rows = allRows.slice(2);
-    
     const config = rows.find(row => row.get('clientId') === clientId);
 
     if (!config) {
