@@ -19,34 +19,27 @@ module.exports = async (req, res) => {
     await doc.loadInfo();
     const sheet = doc.sheetsByTitle['Widget'];
 
-    // Читаем ВСЕ ячейки
-    await sheet.loadCells();
+    const allRows = await sheet.getRows();
 
-    const rowCount = sheet.rowCount;
-    let foundRow = null;
-
-    // Идём по каждой строке сверху вниз
-    for (let i = 0; i < rowCount; i++) {
-      const cell = sheet.getCell(i, 0); // Колонка A
-      if (cell.value === clientId) {
-        foundRow = i;
-        break;
-      }
+    if (!allRows || allRows.length < 2) {
+      return res.status(404).json({ error: "Нет данных на листе" });
     }
 
-    if (foundRow === null) {
+    // Пропускаем только 1 строку с названиями колонок
+    const rows = allRows.slice(1);
+
+    const config = rows.find(row => row.get('clientId') === clientId);
+    if (!config) {
       return res.status(404).json({ error: `Клиент ${clientId} не найден` });
     }
 
-    // Берём данные по номерам колонок A=0, B=1, C=2...
     res.status(200).json({
-      clientId:   sheet.getCell(foundRow, 0).value,
-      text1:      sheet.getCell(foundRow, 1).value,
-      text2:      sheet.getCell(foundRow, 2).value,
-      colorStart: sheet.getCell(foundRow, 3).value,
-      colorEnd:   sheet.getCell(foundRow, 4).value,
-      avatarUrl:  sheet.getCell(foundRow, 5).value,
-      botName:    sheet.getCell(foundRow, 6).value,
+      text1:      config.get('text1'),
+      text2:      config.get('text2'),
+      colorStart: config.get('colorStart'),
+      colorEnd:   config.get('colorEnd'),
+      avatarUrl:  config.get('avatarUrl'),
+      botName:    config.get('botName'),
     });
 
   } catch (error) {
