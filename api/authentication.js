@@ -26,12 +26,12 @@ module.exports = async (req, res) => {
       scopes: ['https://www.googleapis.com/auth/spreadsheets'],
     });
 
-    // ЗАМЕНИТЕ НА ВАШ ID ТАБЛИЦЫ
+    // ИСПОЛЬЗУЕМ ID ТАБЛИЦЫ ИЗ ПЕРЕМЕННОЙ ОКРУЖЕНИЯ
     const doc = new GoogleSpreadsheet(process.env.GOOGLE_SHEET_ID, auth);
     await doc.loadInfo();
 
-    // 2. ИЩЕМ КОНФИГ КЛИЕНТА НА ЛИСТЕ Authentication
-    const sheet = doc.sheetsByTitle['Authentication']; 
+    // 2. ИЩЕМ КОНФИГ КЛИЕНТА НА ЛИСТЕ "Authentication-аутентификация"
+    const sheet = doc.sheetsByTitle['Authentication-аутентификация']; 
     const rows = await sheet.getRows();
     const config = rows.find(row => row.get('clientId') === clientId);
 
