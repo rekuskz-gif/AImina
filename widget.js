@@ -1,4 +1,11 @@
 (function() {
+    // CORS FIX
+    const scriptTag = document.currentScript;
+    const clientId = scriptTag.getAttribute('data-client-id') || 'mina_001';
+    const backendUrl = 'https://ai--mina.vercel.app';
+
+
+(function() {
     const scriptTag = document.currentScript;
     const clientId = scriptTag.getAttribute('data-client-id') || 'mina_001';
     const backendUrl = 'https://ai--mina.vercel.app';
