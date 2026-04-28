@@ -2,12 +2,10 @@ const { GoogleSpreadsheet } = require('google-spreadsheet');
 const { JWT } = require('google-auth-library');
 
 module.exports = async (req, res) => {
-  // ⬇️ CORS ЗАГОЛОВКИ (ОБЯЗАТЕЛЬНО В НАЧАЛЕ)
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, GET, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
-  // Если браузер проверяет доступ (OPTIONS запрос)
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
   }
@@ -19,19 +17,17 @@ module.exports = async (req, res) => {
       return res.status(400).json({ error: "clientId и messages обязательны" });
     }
 
-    // 1. АВТОРИЗАЦИЯ В GOOGLE
     const auth = new JWT({
       email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
       key: process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, '\n'),
       scopes: ['https://www.googleapis.com/auth/spreadsheets'],
     });
 
-    // ИСПОЛЬЗУЕМ ID ТАБЛИЦЫ ИЗ ПЕРЕМЕННОЙ ОКРУЖЕНИЯ
     const doc = new GoogleSpreadsheet(process.env.GOOGLE_SHEET_ID, auth);
     await doc.loadInfo();
 
-    // 2. ИЩЕМ КОНФИГ КЛИЕНТА НА ЛИСТЕ "Authentication-аутентификация"
-    const sheet = doc.sheetsByTitle['Authentication-аутентификация']; 
+    // ⬇️ ЧИТАЕМ С ЛИСТА "authentication"
+    const sheet = doc.sheetsByTitle['authentication']; 
     const rows = await sheet.getRows();
     const config = rows.find(row => row.get('clientId') === clientId);
 
@@ -43,7 +39,6 @@ module.exports = async (req, res) => {
       return res.status(403).json({ error: "Агент не активен" });
     }
 
-    // 3. ОТПРАВЛЯЕМ ЗАПРОС В CLAUDE
     const claudeKey = config.get('claudeKey');
     if (!claudeKey) {
       return res.status(500).json({ error: "API ключ Claude не найден" });
@@ -73,7 +68,6 @@ module.exports = async (req, res) => {
 
     const botMessage = data.content[0].text;
 
-    // 4. ВОЗВРАЩАЕМ ОТВЕТ
     return res.status(200).json({ 
       text: botMessage 
     });
