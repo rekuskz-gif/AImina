@@ -9,6 +9,7 @@ module.exports = async (req, res) => {
 
   try {
     const clientId = req.query.clientId || 'mina_001';
+
     const auth = new JWT({
       email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
       key: process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, '\n'),
@@ -18,30 +19,41 @@ module.exports = async (req, res) => {
     const doc = new GoogleSpreadsheet(process.env.GOOGLE_SHEET_ID, auth);
     await doc.loadInfo();
     const sheet = doc.sheetsByTitle['Widget'];
-    const allRows = await sheet.getRows();
+    await sheet.loadCells();
 
-    if (!allRows || allRows.length === 0) {
-      return res.status(404).json({ error: "Нет данных на листе" });
+    const defaultRow = 1; // строка 2
+
+    // Ищем клиента
+    let foundRow = null;
+    for (let i = 0; i < sheet.rowCount; i++) {
+      if (sheet.getCell(i, 0).value === clientId) {
+        foundRow = i;
+        break;
+      }
     }
 
-    const config = allRows.find(row => row.get('clientId') === clientId);
-    if (!config) {
+    if (foundRow === null) {
       return res.status(404).json({ error: `Клиент ${clientId} не найден` });
     }
 
-    res.status(200).json({
-      text1:      config.get('text1'),
-      text2:      config.get('text2'),
-      colorStart: config.get('colorStart'),
-      colorEnd:   config.get('colorEnd'),
-      avatarUrl:  config.get('avatarUrl'),
-      botName:    config.get('botName'),
-      bgColor:    config.get('bgColor')   || '#ffffff',
-      textColor:  config.get('textColor') || '#000000',
+    // Если пусто — берём из строки 2
+    const get = (col) => sheet.getCell(foundRow, col).value || sheet.getCell(defaultRow, col).value;
+
+    // A=0 clientId, B=1 text1, C=2 text2, D=3 colorStart
+    // E=4 colorEnd, F=5 avatarUrl, G=6 botName, H=7 bgColor, I=8 textColor
+    return res.status(200).json({
+      text1:      get(1) || '',
+      text2:      get(2) || '',
+      colorStart: get(3) || '#7c3aed',
+      colorEnd:   get(4) || '#4f46e5',
+      avatarUrl:  get(5) || '',
+      botName:    get(6) || 'AI Mina',
+      bgColor:    get(7) || '#ffffff',
+      textColor:  get(8) || '#000000',
     });
 
   } catch (error) {
     console.error('Error:', error);
-    res.status(500).json({ error: error.message });
+    return res.status(500).json({ error: error.message });
   }
 };
