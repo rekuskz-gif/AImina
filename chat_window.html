@@ -202,13 +202,11 @@
                 const input = document.getElementById('user-msg');
                 const footer = document.getElementById('chat-footer');
 
-                // Шапка
                 header.style.background = config.headerColor || '#7c3aed';
                 header.innerText = config.botName || 'AI Chat';
                 btn.style.background = config.headerColor || '#7c3aed';
                 input.placeholder = config.placeholder || 'Введите сообщение...';
 
-                // Цвета пузырей
                 const styleElement = document.createElement('style');
                 let css = `.user { background: ${config.userBubbleColor || '#7c3aed'} !important; }
                            .bot { background: ${config.botBubbleColor || '#ffffff'} !important; }
@@ -221,13 +219,11 @@
                 styleElement.textContent = css;
                 document.head.appendChild(styleElement);
 
-                // Футер — только если footerText заполнен
                 if (config.footerText && config.footerText.trim()) {
                     footer.style.display = 'block';
                     footer.innerHTML = `<a href="${config.footerUrl || '#'}" target="_blank" style="color: ${config.footerColor || '#999'}">${config.footerText}</a>`;
                 }
 
-                // Приветствие
                 if (config.welcomeMsg) {
                     addMsg(config.welcomeMsg, 'bot');
                     chatHistory.push({ role: 'assistant', content: config.welcomeMsg });
