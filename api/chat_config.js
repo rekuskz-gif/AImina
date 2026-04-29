@@ -38,7 +38,6 @@ module.exports = async (req, res) => {
       botName:         config.get('botName')         || 'AI Mina',
       welcomeMsg:      config.get('welcomeMsg')      || 'Здравствуйте! Чем я могу помочь?',
       placeholder:     config.get('placeholder')     || 'Введите сообщение...',
-      promptDocId:     config.get('promptDocId')     || null,
     });
 
   } catch (error) {
