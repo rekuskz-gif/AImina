@@ -6,13 +6,10 @@ module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, GET, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
-  }
+  if (req.method === 'OPTIONS') return res.status(200).end();
 
   try {
     const { clientId, messages } = req.body;
-
     if (!clientId || !messages) {
       return res.status(400).json({ error: "clientId и messages обязательны" });
     }
@@ -29,32 +26,43 @@ module.exports = async (req, res) => {
     const doc = new GoogleSpreadsheet(process.env.GOOGLE_SHEET_ID, auth);
     await doc.loadInfo();
     const sheet = doc.sheetsByTitle['Authentication'];
-    const rows = await sheet.getRows();
 
-    const config = rows.find(row => row.get('clientId') === clientId);
-    if (!config) {
+    // Ищем по всем ячейкам колонки A
+    await sheet.loadCells();
+    let foundRow = null;
+    for (let i = 0; i < sheet.rowCount; i++) {
+      if (sheet.getCell(i, 0).value === clientId) {
+        foundRow = i;
+        break;
+      }
+    }
+
+    if (foundRow === null) {
       return res.status(404).json({ error: "Клиент не найден" });
     }
 
-    if (config.get('status') !== 'active') {
+    // A=0 clientId, B=1 botName, C=2 primaryColor, D=3 googleDocId
+    // E=4 claudeApiKey, F=5 tgToken, G=6 tgChatId, H=7 status, I=8 avatarUrl
+    const status      = sheet.getCell(foundRow, 7).value;
+    const claudeKey   = sheet.getCell(foundRow, 4).value;
+    const googleDocId = sheet.getCell(foundRow, 3).value;
+    const avatarUrl   = sheet.getCell(foundRow, 8).value;
+
+    if (status !== 'active') {
       return res.status(403).json({ error: "Агент не активен" });
     }
 
-    const claudeKey = config.get('claudeApiKey');
     if (!claudeKey) {
       return res.status(500).json({ error: "API ключ не найден" });
     }
 
     // Читаем промпт из Google Doc
     let systemPrompt = "Ты полезный ИИ ассистент";
-    const googleDocId = config.get('googleDocId');
-
     if (googleDocId) {
       try {
         const docsClient = google.docs({ version: 'v1', auth });
         const docRes = await docsClient.documents.get({ documentId: googleDocId });
-        const content = docRes.data.body.content;
-        systemPrompt = content
+        systemPrompt = docRes.data.body.content
           .filter(block => block.paragraph)
           .map(block => block.paragraph.elements.map(el => el.textRun?.content || '').join(''))
           .join('')
@@ -81,19 +89,17 @@ module.exports = async (req, res) => {
     });
 
     const data = await response.json();
-
     if (!response.ok) {
-      console.error('Claude API Error:', data);
       return res.status(response.status).json({ error: "Ошибка Claude API", details: data });
     }
 
-    return res.status(200).json({ text: data.content[0].text });
+    return res.status(200).json({ 
+      text: data.content[0].text,
+      avatarUrl: avatarUrl || null
+    });
 
   } catch (error) {
     console.error('Auth Error:', error);
-    return res.status(500).json({
-      error: "Ошибка сервера",
-      message: error.message
-    });
+    return res.status(500).json({ error: "Ошибка сервера", message: error.message });
   }
 };
