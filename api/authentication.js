@@ -1,35 +1,38 @@
 const { GoogleSpreadsheet } = require('google-spreadsheet');
 const { JWT } = require('google-auth-library');
+const { google } = require('googleapis');
 
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, GET, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
   }
 
   try {
     const { clientId, messages } = req.body;
-    
+
     if (!clientId || !messages) {
       return res.status(400).json({ error: "clientId и messages обязательны" });
     }
 
+    // Подключаемся к таблице
     const auth = new JWT({
       email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
       key: process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, '\n'),
-      scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+      scopes: [
+        'https://www.googleapis.com/auth/spreadsheets',
+        'https://www.googleapis.com/auth/documents.readonly'
+      ],
     });
 
     const doc = new GoogleSpreadsheet(process.env.GOOGLE_SHEET_ID, auth);
     await doc.loadInfo();
+    const sheet = doc.sheetsByTitle['Authentication'];
+    const rows = await sheet.getRows({ startIndex: 2 });
 
-    const sheet = doc.sheetsByTitle['Authentication']; 
-    const rows = await sheet.getRows();
     const config = rows.find(row => row.get('clientId') === clientId);
-
     if (!config) {
       return res.status(404).json({ error: "Клиент не найден" });
     }
@@ -38,11 +41,31 @@ module.exports = async (req, res) => {
       return res.status(403).json({ error: "Агент не активен" });
     }
 
-    const claudeKey = config.get('claudeKey');
+    const claudeKey = config.get('claudeApiKey');
     if (!claudeKey) {
-      return res.status(500).json({ error: "API ключ Claude не найден" });
+      return res.status(500).json({ error: "API ключ не найден" });
     }
 
+    // Читаем промпт из Google Doc
+    let systemPrompt = "Ты полезный ИИ ассистент";
+    const googleDocId = config.get('googleDocId');
+
+    if (googleDocId) {
+      try {
+        const docsClient = google.docs({ version: 'v1', auth });
+        const docRes = await docsClient.documents.get({ documentId: googleDocId });
+        const content = docRes.data.body.content;
+        systemPrompt = content
+          .filter(block => block.paragraph)
+          .map(block => block.paragraph.elements.map(el => el.textRun?.content || '').join(''))
+          .join('')
+          .trim();
+      } catch (e) {
+        console.error('Ошибка чтения промпта:', e);
+      }
+    }
+
+    // Отправляем в Claude
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -51,9 +74,9 @@ module.exports = async (req, res) => {
         'content-type': 'application/json'
       },
       body: JSON.stringify({
-        model: "claude-3-5-sonnet-20240620",
+        model: "claude-haiku-4-5-20251001",
         max_tokens: 1024,
-        system: "Ты полезный ИИ ассистент",
+        system: systemPrompt,
         messages: messages
       })
     });
@@ -65,17 +88,13 @@ module.exports = async (req, res) => {
       return res.status(response.status).json({ error: "Ошибка Claude API", details: data });
     }
 
-    const botMessage = data.content[0].text;
-
-    return res.status(200).json({ 
-      text: botMessage 
-    });
+    return res.status(200).json({ text: data.content[0].text });
 
   } catch (error) {
     console.error('Auth Error:', error);
-    return res.status(500).json({ 
-      error: "Ошибка сервера", 
-      message: error.message 
+    return res.status(500).json({
+      error: "Ошибка сервера",
+      message: error.message
     });
   }
 };
