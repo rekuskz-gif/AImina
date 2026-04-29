@@ -95,7 +95,7 @@
         }
         
         #chat-input-area { 
-            padding: 15px; 
+            padding: 15px 15px 8px 15px; 
             background: white; 
             display: flex; 
             gap: 10px; 
@@ -146,6 +146,23 @@
             margin: 10px;
             border: 1px solid #fcc;
         }
+
+        #chat-footer {
+            background: white;
+            text-align: center;
+            padding: 6px 15px 10px 15px;
+            font-size: 11px;
+            display: none;
+        }
+
+        #chat-footer a {
+            text-decoration: none;
+            font-weight: bold;
+        }
+
+        #chat-footer a:hover {
+            text-decoration: underline;
+        }
     </style>
 </head>
 <body>
@@ -155,6 +172,7 @@
         <input type="text" id="user-msg" placeholder="Введите сообщение..." onkeypress="if(event.key==='Enter') send()">
         <button id="send-btn" onclick="send()">→</button>
     </div>
+    <div id="chat-footer"></div>
 
     <script>
         const params = new URLSearchParams(window.location.search);
@@ -162,8 +180,6 @@
         
         let config = null;
         let isLoading = false;
-        
-        // 📓 ТЕТРАДКА - здесь храним всю историю
         let chatHistory = [];
 
         async function loadConfig() {
@@ -184,15 +200,19 @@
                 const header = document.getElementById('chat-header');
                 const btn = document.getElementById('send-btn');
                 const input = document.getElementById('user-msg');
+                const footer = document.getElementById('chat-footer');
 
+                // Шапка
                 header.style.background = config.headerColor || '#7c3aed';
                 header.innerText = config.botName || 'AI Chat';
                 btn.style.background = config.headerColor || '#7c3aed';
                 input.placeholder = config.placeholder || 'Введите сообщение...';
 
+                // Цвета пузырей
                 const styleElement = document.createElement('style');
                 let css = `.user { background: ${config.userBubbleColor || '#7c3aed'} !important; }
-                           .bot { background: ${config.botBubbleColor || '#ffffff'} !important; }`;
+                           .bot { background: ${config.botBubbleColor || '#ffffff'} !important; }
+                           input:focus { border-color: ${config.headerColor || '#7c3aed'} !important; }`;
                 
                 if (config.customCSS && config.customCSS.trim()) {
                     css += '\n' + config.customCSS;
@@ -201,9 +221,15 @@
                 styleElement.textContent = css;
                 document.head.appendChild(styleElement);
 
+                // Футер — только если footerText заполнен
+                if (config.footerText && config.footerText.trim()) {
+                    footer.style.display = 'block';
+                    footer.innerHTML = `<a href="${config.footerUrl || '#'}" target="_blank" style="color: ${config.footerColor || '#999'}">${config.footerText}</a>`;
+                }
+
+                // Приветствие
                 if (config.welcomeMsg) {
                     addMsg(config.welcomeMsg, 'bot');
-                    // Приветствие тоже записываем в тетрадку
                     chatHistory.push({ role: 'assistant', content: config.welcomeMsg });
                 }
 
@@ -224,14 +250,10 @@
             
             if (!text) return;
 
-            // Показываем сообщение юзера
             addMsg(text, 'user');
             input.value = '';
-
-            // Записываем в тетрадку
             chatHistory.push({ role: 'user', content: text });
 
-            // Показываем печатание
             const typingDiv = document.createElement('div');
             typingDiv.className = 'typing';
             typingDiv.innerHTML = '<span></span><span></span><span></span>';
@@ -248,7 +270,6 @@
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({ 
                         clientId, 
-                        // Отправляем ВСЮ тетрадку
                         messages: chatHistory
                     })
                 });
@@ -262,14 +283,11 @@
                 }
 
                 addMsg(result.text, 'bot');
-
-                // Записываем ответ бота в тетрадку
                 chatHistory.push({ role: 'assistant', content: result.text });
                 
             } catch (error) {
                 console.error('Send error:', error);
                 addMsg(`❌ ${error.message}`, 'error');
-                // Убираем последнее сообщение юзера из тетрадки если ошибка
                 chatHistory.pop();
             } finally {
                 typingDiv.remove();
