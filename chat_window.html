@@ -146,18 +146,6 @@
             margin: 10px;
             border: 1px solid #fcc;
         }
-
-        .loading-msg {
-            text-align: center;
-            padding: 20px;
-            color: #999;
-            font-size: 13px;
-        }
-
-        /* Динамические стили из Google Sheets */
-        #aimina-dynamic-styles {
-            display: none;
-        }
     </style>
 </head>
 <body>
@@ -174,16 +162,16 @@
         
         let config = null;
         let isLoading = false;
+        
+        // 📓 ТЕТРАДКА - здесь храним всю историю
+        let chatHistory = [];
 
-        // Загрузка конфига из /api/chat_config
         async function loadConfig() {
             try {
                 if (!clientId) {
                     throw new Error('clientId not found in URL');
                 }
 
-                console.log('📋 Loading config for clientId:', clientId);
-                
                 const res = await fetch(`/api/chat_config?clientId=${clientId}`);
                 const data = await res.json();
                 
@@ -192,29 +180,20 @@
                 }
 
                 config = data;
-                console.log('✅ Config loaded:', config);
 
-                // === ПРИМЕНЯЕМ СТИЛИ ===
                 const header = document.getElementById('chat-header');
                 const btn = document.getElementById('send-btn');
                 const input = document.getElementById('user-msg');
 
-                // Цвет шапки
                 header.style.background = config.headerColor || '#7c3aed';
                 header.innerText = config.botName || 'AI Chat';
                 btn.style.background = config.headerColor || '#7c3aed';
-
-                // Подсказка в поле ввода
                 input.placeholder = config.placeholder || 'Введите сообщение...';
 
-                // === ДИНАМИЧЕСКИЕ СТИЛИ ===
                 const styleElement = document.createElement('style');
-                styleElement.id = 'aimina-dynamic-styles';
-                
                 let css = `.user { background: ${config.userBubbleColor || '#7c3aed'} !important; }
                            .bot { background: ${config.botBubbleColor || '#ffffff'} !important; }`;
                 
-                // Кастомный CSS из Google Sheets
                 if (config.customCSS && config.customCSS.trim()) {
                     css += '\n' + config.customCSS;
                 }
@@ -222,9 +201,10 @@
                 styleElement.textContent = css;
                 document.head.appendChild(styleElement);
 
-                // Приветствие
                 if (config.welcomeMsg) {
                     addMsg(config.welcomeMsg, 'bot');
+                    // Приветствие тоже записываем в тетрадку
+                    chatHistory.push({ role: 'assistant', content: config.welcomeMsg });
                 }
 
             } catch (error) {
@@ -244,11 +224,14 @@
             
             if (!text) return;
 
-            // Показываем сообщение пользователя
+            // Показываем сообщение юзера
             addMsg(text, 'user');
             input.value = '';
 
-            // Показываем "печатание"
+            // Записываем в тетрадку
+            chatHistory.push({ role: 'user', content: text });
+
+            // Показываем печатание
             const typingDiv = document.createElement('div');
             typingDiv.className = 'typing';
             typingDiv.innerHTML = '<span></span><span></span><span></span>';
@@ -265,7 +248,8 @@
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({ 
                         clientId, 
-                        messages: [{role: 'user', content: text}] 
+                        // Отправляем ВСЮ тетрадку
+                        messages: chatHistory
                     })
                 });
 
@@ -278,10 +262,15 @@
                 }
 
                 addMsg(result.text, 'bot');
+
+                // Записываем ответ бота в тетрадку
+                chatHistory.push({ role: 'assistant', content: result.text });
                 
             } catch (error) {
                 console.error('Send error:', error);
                 addMsg(`❌ ${error.message}`, 'error');
+                // Убираем последнее сообщение юзера из тетрадки если ошибка
+                chatHistory.pop();
             } finally {
                 typingDiv.remove();
                 isLoading = false;
@@ -306,7 +295,6 @@
             container.scrollTop = container.scrollHeight;
         }
 
-        // Инициализация
         loadConfig();
     </script>
 </body>
