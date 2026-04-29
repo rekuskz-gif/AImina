@@ -1,319 +1,47 @@
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Chat</title>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        
-        body { 
-            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; 
-            display: flex; 
-            flex-direction: column; 
-            height: 100vh; 
-            background: #f0f2f5;
-            overflow: hidden;
-        }
-        
-        #chat-header { 
-            padding: 15px 20px; 
-            color: white; 
-            font-weight: bold; 
-            font-size: 16px; 
-            display: flex; 
-            align-items: center; 
-            gap: 10px;
-            background: #7c3aed;
-            min-height: 50px;
-            flex-shrink: 0;
-        }
-        
-        #chat-messages { 
-            flex: 1; 
-            overflow-y: auto; 
-            padding: 15px; 
-            display: flex; 
-            flex-direction: column; 
-            gap: 12px;
-            background: #f0f2f5;
-        }
-        
-        .msg { 
-            padding: 10px 14px; 
-            border-radius: 18px; 
-            max-width: 80%; 
-            font-size: 14px; 
-            line-height: 1.4; 
-            word-wrap: break-word;
-            animation: fadeIn 0.3s ease;
-        }
+const { GoogleSpreadsheet } = require('google-spreadsheet');
+const { JWT } = require('google-auth-library');
 
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(10px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
+module.exports = async (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  if (req.method === 'OPTIONS') return res.status(200).end();
 
-        .bot { 
-            align-self: flex-start; 
-            background: #ffffff; 
-            color: #333; 
-            border-bottom-left-radius: 4px; 
-            box-shadow: 0 1px 2px rgba(0,0,0,0.1);
-        }
+  try {
+    const clientId = req.query.clientId || 'mina_001';
+    const auth = new JWT({
+      email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
+      key: process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, '\n'),
+      scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+    });
 
-        .user { 
-            align-self: flex-end; 
-            color: white; 
-            border-bottom-right-radius: 4px;
-        }
+    const doc = new GoogleSpreadsheet(process.env.GOOGLE_SHEET_ID, auth);
+    await doc.loadInfo();
+    const sheet = doc.sheetsByTitle['Widget'];
+    const allRows = await sheet.getRows();
 
-        .typing {
-            display: flex;
-            gap: 4px;
-            align-self: flex-start;
-            padding: 12px 16px;
-            background: white;
-            border-radius: 18px;
-            border-bottom-left-radius: 4px;
-        }
+    if (!allRows || allRows.length === 0) {
+      return res.status(404).json({ error: "Нет данных на листе" });
+    }
 
-        .typing span {
-            width: 8px;
-            height: 8px;
-            background: #999;
-            border-radius: 50%;
-            animation: typing 1.4s infinite;
-        }
+    const config = allRows.find(row => row.get('clientId') === clientId);
+    if (!config) {
+      return res.status(404).json({ error: `Клиент ${clientId} не найден` });
+    }
 
-        .typing span:nth-child(2) { animation-delay: 0.2s; }
-        .typing span:nth-child(3) { animation-delay: 0.4s; }
+    res.status(200).json({
+      text1:      config.get('text1'),
+      text2:      config.get('text2'),
+      colorStart: config.get('colorStart'),
+      colorEnd:   config.get('colorEnd'),
+      avatarUrl:  config.get('avatarUrl'),
+      botName:    config.get('botName'),
+      bgColor:    config.get('bgColor')   || '#ffffff',
+      textColor:  config.get('textColor') || '#000000',
+    });
 
-        @keyframes typing {
-            0%, 60%, 100% { opacity: 0.5; }
-            30% { opacity: 1; }
-        }
-        
-        #chat-input-area { 
-            padding: 15px 15px 8px 15px; 
-            background: white; 
-            display: flex; 
-            gap: 10px; 
-            border-top: 1px solid #ddd;
-            flex-shrink: 0;
-        }
-
-        input { 
-            flex: 1; 
-            padding: 12px 15px; 
-            border: 1px solid #ddd; 
-            border-radius: 25px; 
-            outline: none; 
-            font-size: 14px;
-            transition: border-color 0.2s;
-        }
-
-        input:focus {
-            border-color: #7c3aed;
-        }
-
-        button { 
-            border: none; 
-            background: #7c3aed; 
-            color: white; 
-            width: 40px; 
-            height: 40px; 
-            border-radius: 50%; 
-            cursor: pointer; 
-            font-weight: bold; 
-            display: flex; 
-            align-items: center; 
-            justify-content: center;
-            transition: all 0.2s;
-            flex-shrink: 0;
-        }
-
-        button:hover { opacity: 0.9; }
-        button:active { transform: scale(0.95); }
-        button:disabled { opacity: 0.5; cursor: not-allowed; }
-
-        .error-msg {
-            background: #fee;
-            color: #c33;
-            padding: 12px;
-            border-radius: 8px;
-            font-size: 13px;
-            margin: 10px;
-            border: 1px solid #fcc;
-        }
-
-        #chat-footer {
-            background: white;
-            text-align: center;
-            padding: 6px 15px 10px 15px;
-            font-size: 11px;
-            display: none;
-        }
-
-        #chat-footer a {
-            text-decoration: none;
-            font-weight: bold;
-        }
-
-        #chat-footer a:hover {
-            text-decoration: underline;
-        }
-    </style>
-</head>
-<body>
-    <div id="chat-header">Загрузка...</div>
-    <div id="chat-messages"></div>
-    <div id="chat-input-area">
-        <input type="text" id="user-msg" placeholder="Введите сообщение..." onkeypress="if(event.key==='Enter') send()">
-        <button id="send-btn" onclick="send()">→</button>
-    </div>
-    <div id="chat-footer"></div>
-
-    <script>
-        const params = new URLSearchParams(window.location.search);
-        const clientId = params.get('clientId');
-        
-        let config = null;
-        let isLoading = false;
-        let chatHistory = [];
-
-        async function loadConfig() {
-            try {
-                if (!clientId) {
-                    throw new Error('clientId not found in URL');
-                }
-
-                const res = await fetch(`/api/chat_config?clientId=${clientId}`);
-                const data = await res.json();
-                
-                if (!res.ok) {
-                    throw new Error(data.error || 'Failed to load config');
-                }
-
-                config = data;
-
-                const header = document.getElementById('chat-header');
-                const btn = document.getElementById('send-btn');
-                const input = document.getElementById('user-msg');
-                const footer = document.getElementById('chat-footer');
-
-                // Шапка
-                header.style.background = config.headerColor || '#7c3aed';
-                header.innerText = config.botName || 'AI Chat';
-                btn.style.background = config.headerColor || '#7c3aed';
-                input.placeholder = config.placeholder || 'Введите сообщение...';
-
-                // Цвета пузырей
-                const styleElement = document.createElement('style');
-                let css = `.user { background: ${config.userBubbleColor || '#7c3aed'} !important; }
-                           .bot { background: ${config.botBubbleColor || '#ffffff'} !important; }
-                           input:focus { border-color: ${config.headerColor || '#7c3aed'} !important; }`;
-                
-                if (config.customCSS && config.customCSS.trim()) {
-                    css += '\n' + config.customCSS;
-                }
-                
-                styleElement.textContent = css;
-                document.head.appendChild(styleElement);
-
-                // Футер — только если footerText заполнен
-                if (config.footerText && config.footerText.trim()) {
-                    footer.style.display = 'block';
-                    footer.innerHTML = `<a href="${config.footerUrl || '#'}" target="_blank" style="color: ${config.footerColor || '#999'}">${config.footerText}</a>`;
-                }
-
-                // Приветствие
-                if (config.welcomeMsg) {
-                    addMsg(config.welcomeMsg, 'bot');
-                    chatHistory.push({ role: 'assistant', content: config.welcomeMsg });
-                }
-
-            } catch (error) {
-                console.error('❌ Config error:', error);
-                addMsg(`❌ Ошибка загрузки: ${error.message}`, 'error');
-                document.getElementById('user-msg').disabled = true;
-                document.getElementById('send-btn').disabled = true;
-            }
-        }
-
-        async function send() {
-            if (isLoading || !config) return;
-
-            const input = document.getElementById('user-msg');
-            const btn = document.getElementById('send-btn');
-            const text = input.value.trim();
-            
-            if (!text) return;
-
-            addMsg(text, 'user');
-            input.value = '';
-            chatHistory.push({ role: 'user', content: text });
-
-            const typingDiv = document.createElement('div');
-            typingDiv.className = 'typing';
-            typingDiv.innerHTML = '<span></span><span></span><span></span>';
-            document.getElementById('chat-messages').appendChild(typingDiv);
-            document.getElementById('chat-messages').scrollTop = document.getElementById('chat-messages').scrollHeight;
-
-            isLoading = true;
-            btn.disabled = true;
-            input.disabled = true;
-
-            try {
-                const res = await fetch('/api/authentication', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({ 
-                        clientId, 
-                        messages: chatHistory
-                    })
-                });
-
-                typingDiv.remove();
-
-                const result = await res.json();
-                
-                if (!res.ok) {
-                    throw new Error(result.error || 'API error');
-                }
-
-                addMsg(result.text, 'bot');
-                chatHistory.push({ role: 'assistant', content: result.text });
-                
-            } catch (error) {
-                console.error('Send error:', error);
-                addMsg(`❌ ${error.message}`, 'error');
-                chatHistory.pop();
-            } finally {
-                typingDiv.remove();
-                isLoading = false;
-                btn.disabled = false;
-                input.disabled = false;
-                input.focus();
-            }
-        }
-
-        function addMsg(text, type) {
-            const div = document.createElement('div');
-            
-            if (type === 'error') {
-                div.className = 'error-msg';
-            } else {
-                div.className = `msg ${type}`;
-            }
-            
-            div.innerText = text;
-            const container = document.getElementById('chat-messages');
-            container.appendChild(div);
-            container.scrollTop = container.scrollHeight;
-        }
-
-        loadConfig();
-    </script>
-</body>
-</html>
+  } catch (error) {
+    console.error('Error:', error);
+    res.status(500).json({ error: error.message });
+  }
+};
