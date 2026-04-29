@@ -38,6 +38,10 @@ module.exports = async (req, res) => {
       botName:         config.get('botName')         || 'AI Mina',
       welcomeMsg:      config.get('welcomeMsg')      || 'Здравствуйте! Чем я могу помочь?',
       placeholder:     config.get('placeholder')     || 'Введите сообщение...',
+      customCSS:       config.get('customCSS')       || '',
+      footerText:      config.get('footerText')      || '',
+      footerColor:     config.get('footerColor')     || '#999999',
+      footerUrl:       config.get('footerUrl')       || '#',
     });
 
   } catch (error) {
