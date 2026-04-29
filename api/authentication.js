@@ -17,7 +17,6 @@ module.exports = async (req, res) => {
       return res.status(400).json({ error: "clientId и messages обязательны" });
     }
 
-    // Подключаемся к таблице
     const auth = new JWT({
       email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
       key: process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, '\n'),
@@ -30,7 +29,7 @@ module.exports = async (req, res) => {
     const doc = new GoogleSpreadsheet(process.env.GOOGLE_SHEET_ID, auth);
     await doc.loadInfo();
     const sheet = doc.sheetsByTitle['Authentication'];
-    const rows = await sheet.getRows({ startIndex: 2 });
+    const rows = await sheet.getRows();
 
     const config = rows.find(row => row.get('clientId') === clientId);
     if (!config) {
