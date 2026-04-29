@@ -28,9 +28,8 @@ module.exports = async (req, res) => {
     const sheet = doc.sheetsByTitle['Authentication'];
     await sheet.loadCells();
 
-    // Ищем строку клиента и строку по умолчанию (строка 2 = индекс 1)
+    const defaultRow = 1;
     let foundRow = null;
-    let defaultRow = 1; // строка 2
 
     for (let i = 0; i < sheet.rowCount; i++) {
       if (sheet.getCell(i, 0).value === clientId) {
@@ -43,11 +42,8 @@ module.exports = async (req, res) => {
       return res.status(404).json({ error: "Клиент не найден" });
     }
 
-    // Функция — берёт из строки клиента, если пусто — из строки по умолчанию
     const get = (col) => sheet.getCell(foundRow, col).value || sheet.getCell(defaultRow, col).value;
 
-    // A=0 clientId, B=1 botName, C=2 primaryColor, D=3 googleDocId
-    // E=4 claudeApiKey, F=5 tgToken, G=6 tgChatId, H=7 status, I=8 avatarUrl
     const status      = get(7);
     const claudeKey   = get(4);
     const googleDocId = get(3);
@@ -69,7 +65,9 @@ module.exports = async (req, res) => {
         const docRes = await docsClient.documents.get({ documentId: googleDocId });
         systemPrompt = docRes.data.body.content
           .filter(block => block.paragraph)
-          .map(block => block.paragraph.elements.map(el => el.textRun?.content || '').join(''))
+          .map(block => block.paragraph.elements
+            .map(el => el.textRun ? el.textRun.content : '')
+            .join(''))
           .join('')
           .trim();
       } catch (e) {
@@ -97,7 +95,10 @@ module.exports = async (req, res) => {
       return res.status(response.status).json({ error: "Ошибка Claude API", details: data });
     }
 
-    return res.status(200).json({ text: data.content[0].text, avatarUrl: avatarUrl || null });
+    return res.status(200).json({ 
+      text: data.content[0].text,
+      avatarUrl: avatarUrl || null
+    });
 
   } catch (error) {
     console.error('Auth Error:', error);
