@@ -14,7 +14,7 @@
         #chat-header { 
             padding: 10px 20px; color: white; font-weight: bold; font-size: 16px; 
             display: flex; align-items: center; gap: 10px;
-            background: #7c3aed; min-height: 50px; flex-shrink: 0;
+            background: #7c3aed; min-height: 60px; flex-shrink: 0;
         }
         #chat-header img {
             width: 38px; height: 38px; border-radius: 50%;
@@ -86,8 +86,8 @@
     <div id="chat-header">Загрузка...</div>
     <div id="chat-messages"></div>
     <div id="chat-input-area">
-        <input type="text" id="user-msg" placeholder="Введите сообщение..." onkeypress="if(event.key==='Enter') send()">
-        <button id="send-btn" onclick="send()">→</button>
+        <input type="text" id="user-msg" placeholder="Введите сообщение...">
+        <button id="send-btn">→</button>
     </div>
     <div id="chat-footer"></div>
 
@@ -98,6 +98,14 @@
         let config = null;
         let isLoading = false;
         let chatHistory = [];
+
+        // Вешаем события после загрузки
+        document.getElementById('user-msg').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') send();
+        });
+        document.getElementById('send-btn').addEventListener('click', function() {
+            send();
+        });
 
         async function loadConfig() {
             try {
@@ -114,4 +122,109 @@
                 const input = document.getElementById('user-msg');
                 const footer = document.getElementById('chat-footer');
 
-                header.styl
+                header.style.background = config.headerColor || '#7c3aed';
+                btn.style.background = config.headerColor || '#7c3aed';
+                input.placeholder = config.placeholder || 'Введите сообщение...';
+
+                // Шапка с аватаркой и именем
+                header.innerHTML = '';
+                if (config.avatarUrl) {
+                    const img = document.createElement('img');
+                    img.src = config.avatarUrl;
+                    img.onerror = () => img.style.display = 'none';
+                    header.appendChild(img);
+                }
+                const nameSpan = document.createElement('span');
+                nameSpan.textContent = config.botName || 'AI Chat';
+                header.appendChild(nameSpan);
+
+                // Цвета пузырей
+                const styleElement = document.createElement('style');
+                let css = `.user { background: ${config.userBubbleColor || '#7c3aed'} !important; }
+                           .bot { background: ${config.botBubbleColor || '#ffffff'} !important; }
+                           input:focus { border-color: ${config.headerColor || '#7c3aed'} !important; }`;
+                if (config.customCSS && config.customCSS.trim()) css += '\n' + config.customCSS;
+                styleElement.textContent = css;
+                document.head.appendChild(styleElement);
+
+                // Футер
+                if (config.footerText && config.footerText.trim()) {
+                    footer.style.display = 'block';
+                    footer.innerHTML = `<a href="${config.footerUrl || '#'}" target="_blank" style="color: ${config.footerColor || '#999'}">${config.footerText}</a>`;
+                }
+
+                // Приветствие
+                if (config.welcomeMsg) {
+                    addMsg(config.welcomeMsg, 'bot');
+                    chatHistory.push({ role: 'assistant', content: config.welcomeMsg });
+                }
+
+            } catch (error) {
+                console.error('❌ Config error:', error);
+                addMsg(`❌ Ошибка загрузки: ${error.message}`, 'error');
+                document.getElementById('user-msg').disabled = true;
+                document.getElementById('send-btn').disabled = true;
+            }
+        }
+
+        async function send() {
+            if (isLoading || !config) return;
+            const input = document.getElementById('user-msg');
+            const btn = document.getElementById('send-btn');
+            const text = input.value.trim();
+            if (!text) return;
+
+            addMsg(text, 'user');
+            input.value = '';
+            chatHistory.push({ role: 'user', content: text });
+
+            const typingDiv = document.createElement('div');
+            typingDiv.className = 'typing';
+            typingDiv.innerHTML = '<span></span><span></span><span></span>';
+            document.getElementById('chat-messages').appendChild(typingDiv);
+            document.getElementById('chat-messages').scrollTop = document.getElementById('chat-messages').scrollHeight;
+
+            isLoading = true;
+            btn.disabled = true;
+            input.disabled = true;
+
+            try {
+                const res = await fetch('/api/authentication', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ clientId, messages: chatHistory })
+                });
+
+                typingDiv.remove();
+                const result = await res.json();
+                if (!res.ok) throw new Error(result.error || 'API error');
+
+                addMsg(result.text, 'bot');
+                chatHistory.push({ role: 'assistant', content: result.text });
+
+            } catch (error) {
+                console.error('Send error:', error);
+                addMsg(`❌ ${error.message}`, 'error');
+                chatHistory.pop();
+            } finally {
+                typingDiv.remove();
+                isLoading = false;
+                btn.disabled = false;
+                input.disabled = false;
+                input.focus();
+            }
+        }
+
+        function addMsg(text, type) {
+            const div = document.createElement('div');
+            div.className = type === 'error' ? 'error-msg' : `msg ${type}`;
+            div.innerText = text;
+            const container = document.getElementById('chat-messages');
+            container.appendChild(div);
+            container.scrollTop = container.scrollHeight;
+        }
+
+        loadConfig();
+    </script>
+</body>
+</html>
