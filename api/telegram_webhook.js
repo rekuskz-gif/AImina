@@ -27,8 +27,8 @@ module.exports = async (req, res) => {
 
     // Извлекаем clientId из [mina_001]
     const clientIdMatch = originalText.match(/\[(.+?)\]/);
-    // Извлекаем sessionId из "session: user_xxx"
-    const sessionIdMatch = originalText.match(/session: (user_\w+)/);
+    // Извлекаем sessionId — любое слово после "session: "
+    const sessionIdMatch = originalText.match(/session: (\S+)/);
 
     console.log('🔍 clientId:', clientIdMatch?.[1]);
     console.log('🔍 sessionId:', sessionIdMatch?.[1]);
@@ -43,6 +43,8 @@ module.exports = async (req, res) => {
     const managerText = message.text;
     const tgToken = process.env.TG_BOT_TOKEN;
     const chatId = message.chat.id;
+
+    console.log('✅ clientId:', clientId, 'sessionId:', sessionId);
 
     // Сохраняем в Firebase
     const db = admin.database();
