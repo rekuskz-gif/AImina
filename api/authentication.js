@@ -65,17 +65,16 @@ module.exports = async (req, res) => {
     const lastMessage = messages[messages.length - 1];
     const userText = lastMessage && lastMessage.role === 'user' ? lastMessage.content : null;
 
-    // Отправляем в Телеграм — добавляем sessionId!
+    // Отправляем в Телеграм — БЕЗ Markdown чтобы sessionId не ломался!
     if (tgToken && tgChatId && userText) {
       try {
-        const tgText = `👤 *Юзер [${clientId}]:*\n${userText}\n\n_session: ${sessionId}_`;
+        const tgText = `👤 Юзер [${clientId}]:\n${userText}\n\nsession: ${sessionId}`;
         await fetch(`https://api.telegram.org/bot${tgToken}/sendMessage`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             chat_id: tgChatId,
             text: tgText,
-            parse_mode: 'Markdown'
           })
         });
         console.log('✅ Сообщение отправлено в Телеграм');
@@ -134,8 +133,7 @@ module.exports = async (req, res) => {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             chat_id: tgChatId,
-            text: `🤖 *ИИ ответил:*\n${botText}`,
-            parse_mode: 'Markdown'
+            text: `🤖 ИИ ответил:\n${botText}`,
           })
         });
       } catch (e) {
