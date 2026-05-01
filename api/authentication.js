@@ -1,6 +1,18 @@
 const { GoogleSpreadsheet } = require('google-spreadsheet');
 const { JWT } = require('google-auth-library');
 const { google } = require('googleapis');
+const admin = require('firebase-admin');
+
+if (!admin.apps.length) {
+  admin.initializeApp({
+    credential: admin.credential.cert({
+      projectId: process.env.FIREBASE_PROJECT_ID,
+      clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+      privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n'),
+    }),
+    databaseURL: process.env.FIREBASE_DATABASE_URL,
+  });
+}
 
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -62,25 +74,50 @@ module.exports = async (req, res) => {
       return res.status(500).json({ error: "API ключ не найден" });
     }
 
+    // Проверяем флаг aiEnabled в Firebase
+    const db = admin.database();
+    const sessionRef = db.ref(`chats/${clientId}/${sessionId}`);
+    const sessionSnap = await sessionRef.once('value');
+    const sessionData = sessionSnap.val() || {};
+    const aiEnabled = sessionData.aiEnabled !== false; // по умолчанию включён
+
+    console.log('🤖 aiEnabled:', aiEnabled);
+
     const lastMessage = messages[messages.length - 1];
     const userText = lastMessage && lastMessage.role === 'user' ? lastMessage.content : null;
 
-    // Отправляем в Телеграм — БЕЗ Markdown чтобы sessionId не ломался!
+    // Отправляем в Телеграм с кнопками
     if (tgToken && tgChatId && userText) {
       try {
         const tgText = `👤 Юзер [${clientId}]:\n${userText}\n\nsession: ${sessionId}`;
+        
+        const keyboard = aiEnabled ? [
+          [{ text: '🤖 ИИ включён', callback_data: `ai_off:${clientId}:${sessionId}` }]
+        ] : [
+          [{ text: '👤 Менеджер отвечает', callback_data: `ai_on:${clientId}:${sessionId}` }]
+        ];
+
         await fetch(`https://api.telegram.org/bot${tgToken}/sendMessage`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             chat_id: tgChatId,
             text: tgText,
+            reply_markup: {
+              inline_keyboard: keyboard
+            }
           })
         });
         console.log('✅ Сообщение отправлено в Телеграм');
       } catch (e) {
         console.error('❌ Ошибка отправки в Телеграм:', e.message);
       }
+    }
+
+    // Если ИИ выключен — не отвечаем
+    if (!aiEnabled) {
+      console.log('⏸️ ИИ выключен для этого чата');
+      return res.status(200).json({ text: null, aiDisabled: true });
     }
 
     // Читаем промпт из Google Doc
@@ -102,7 +139,7 @@ module.exports = async (req, res) => {
       }
     }
 
-    // Очищаем историю от лишних полей перед отправкой в Claude
+    // Очищаем историю от лишних полей
     const cleanMessages = messages.map(msg => ({
       role: msg.role,
       content: msg.content
