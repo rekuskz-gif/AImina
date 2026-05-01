@@ -3,7 +3,6 @@
     const clientId = scriptTag.getAttribute('data-client-id') || 'mina_001';
     const backendUrl = 'https://ai--mina.vercel.app';
 
-    // Уникальный ID для каждого браузера
     function getSessionId() {
         let sessionId = localStorage.getItem(`aimina_session_${clientId}`);
         if (!sessionId) {
@@ -29,7 +28,6 @@
                 firebase.initializeApp(firebaseConfig);
             }
             const db = firebase.database();
-
             const sessionId = getSessionId();
             const historyRef = db.ref(`chats/${clientId}/${sessionId}`);
 
@@ -37,7 +35,6 @@
             if (!response.ok) throw new Error(`API ошибка: ${response.status}`);
             const config = await response.json();
 
-            // Загружаем историю этого браузера
             let chatHistory = [];
             const snapshot = await historyRef.once('value');
             if (snapshot.exists()) {
@@ -135,6 +132,11 @@
                     background: linear-gradient(135deg, ${config.colorStart}, ${config.colorEnd});
                     color: white; border-bottom-right-radius: 4px;
                 }
+                .amina-msg.manager {
+                    align-self: flex-start; background: #e3f2fd; color: #333;
+                    border-bottom-left-radius: 4px; box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+                    border-left: 3px solid #2196F3;
+                }
                 .amina-typing {
                     display: flex; gap: 4px; align-self: flex-start;
                     padding: 12px 16px; background: white;
@@ -193,10 +195,30 @@
             let panel = null;
             let isOpen = false;
             let isLoading = false;
+            let lastMessageCount = chatHistory.length;
 
             function saveHistory() {
                 historyRef.set(chatHistory);
             }
+
+            // Слушаем Firebase в реальном времени
+            historyRef.on('value', (snap) => {
+                if (!snap.exists()) return;
+                const newHistory = snap.val() || [];
+
+                // Если новых сообщений больше чем у нас
+                if (newHistory.length > chatHistory.length) {
+                    const newMessages = newHistory.slice(chatHistory.length);
+                    chatHistory = newHistory;
+
+                    // Показываем только новые сообщения от менеджера
+                    newMessages.forEach(msg => {
+                        if (msg.fromManager && isOpen) {
+                            addMsg(msg.content, 'manager');
+                        }
+                    });
+                }
+            });
 
             function openPanel() {
                 if (isOpen) return;
@@ -217,10 +239,12 @@
                 `;
                 document.body.appendChild(panel);
 
+                // Показываем всю историю
                 if (chatHistory.length > 0) {
                     chatHistory.forEach(msg => {
                         if (msg.role !== 'system') {
-                            addMsg(msg.content, msg.role === 'assistant' ? 'bot' : 'user');
+                            const type = msg.fromManager ? 'manager' : (msg.role === 'assistant' ? 'bot' : 'user');
+                            addMsg(msg.content, type);
                         }
                     });
                 } else if (config.text1) {
@@ -290,10 +314,12 @@
             }
 
             function addMsg(text, type) {
+                const msgs = document.getElementById('amina-messages');
+                if (!msgs) return;
                 const div = document.createElement('div');
                 div.className = `amina-msg ${type}`;
                 div.innerText = text;
-                document.getElementById('amina-messages').appendChild(div);
+                msgs.appendChild(div);
                 scrollDown();
             }
 
