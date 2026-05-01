@@ -17,21 +17,25 @@ module.exports = async (req, res) => {
   try {
     const { message, callback_query } = req.body;
 
-    // Обработка нажатия кнопок
     if (callback_query) {
       const data = callback_query.data;
       const chatId = callback_query.message.chat.id;
       const tgToken = process.env.TG_BOT_TOKEN;
       const db = admin.database();
 
-      const parts = data.split(':');
-      const action = parts[0];
-      const clientId = parts[1];
-      const sessionId = parts[2];
+      console.log('🔘 callback data:', data);
 
-      console.log('🔘 Кнопка:', action, clientId, sessionId);
+      const firstColon = data.indexOf(':');
+      const secondColon = data.indexOf(':', firstColon + 1);
+      
+      const action = data.substring(0, firstColon);
+      const clientId = data.substring(firstColon + 1, secondColon);
+      const sessionId = data.substring(secondColon + 1);
 
-      // Сохраняем aiEnabled отдельно
+      console.log('✅ action:', action);
+      console.log('✅ clientId:', clientId);
+      console.log('✅ sessionId:', sessionId);
+
       const aiEnabledRef = db.ref(`chats/${clientId}/${sessionId}/aiEnabled`);
 
       if (action === 'ai_off') {
@@ -43,7 +47,7 @@ module.exports = async (req, res) => {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             callback_query_id: callback_query.id,
-            text: '⏸️ ИИ выключен! Теперь вы отвечаете.'
+            text: '⏸️ ИИ выключен!'
           })
         });
 
@@ -52,7 +56,7 @@ module.exports = async (req, res) => {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             chat_id: chatId,
-            text: `⏸️ ИИ выключен для [${clientId}]\nТеперь менеджер отвечает юзеру вручную.`
+            text: `⏸️ ИИ выключен для [${clientId}]\nМенеджер отвечает вручную.`
           })
         });
 
@@ -77,12 +81,14 @@ module.exports = async (req, res) => {
             text: `▶️ ИИ включён для [${clientId}]\nБот снова отвечает автоматически.`
           })
         });
+
+      } else {
+        console.log('❌ Неизвестное действие:', action);
       }
 
       return res.status(200).json({ ok: true });
     }
 
-    // Обработка обычных сообщений
     if (!message || !message.text) return res.status(200).end();
     if (message.from && message.from.is_bot) return res.status(200).end();
     if (!message.reply_to_message) return res.status(200).end();
@@ -108,8 +114,6 @@ module.exports = async (req, res) => {
     const chatId = message.chat.id;
 
     const db = admin.database();
-
-    // Читаем историю из messages
     const messagesRef = db.ref(`chats/${clientId}/${sessionId}/messages`);
     const snapshot = await messagesRef.once('value');
     const chatHistory = snapshot.val() || [];
