@@ -3,15 +3,36 @@
     const clientId = scriptTag.getAttribute('data-client-id') || 'mina_001';
     const backendUrl = 'https://ai--mina.vercel.app';
 
+    // Firebase конфиг
+    const firebaseConfig = {
+        apiKey: "AIzaSyBgXvb4GLdtaZlw5dgnYKGddOIpFYIXXAU",
+        databaseURL: "https://aimina-d3597-default-rtdb.firebaseio.com",
+        projectId: "aimina-d3597",
+        appId: "1:590164687607:web:c9f97739c0358dfd2571f2"
+    };
+
     async function initMina() {
         try {
-            console.log('Загружаю конфиг для:', clientId);
-            
+            // Загружаем Firebase
+            await loadScript('https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js');
+            await loadScript('https://www.gstatic.com/firebasejs/10.7.0/firebase-database-compat.js');
+
+            if (!firebase.apps.length) {
+                firebase.initializeApp(firebaseConfig);
+            }
+            const db = firebase.database();
+
             const response = await fetch(`${backendUrl}/api/widget_config?clientId=${clientId}`);
             if (!response.ok) throw new Error(`API ошибка: ${response.status}`);
-            
             const config = await response.json();
-            console.log('Конфиг загружен:', config);
+
+            // Загружаем историю из Firebase
+            const historyRef = db.ref(`chats/${clientId}/widget`);
+            let chatHistory = [];
+            const snapshot = await historyRef.once('value');
+            if (snapshot.exists()) {
+                chatHistory = snapshot.val() || [];
+            }
 
             // Стили
             const style = document.createElement('style');
@@ -34,13 +55,8 @@
                     to { opacity: 1; transform: translateY(0); }
                 }
                 .amina-widget {
-                    position: fixed;
-                    bottom: 20px;
-                    right: 20px;
-                    z-index: 9999;
-                    display: flex;
-                    align-items: center;
-                    gap: 10px;
+                    position: fixed; bottom: 20px; right: 20px;
+                    z-index: 9999; display: flex; align-items: center; gap: 10px;
                 }
                 .amina-btn {
                     width: 70px; height: 70px; border-radius: 50%;
@@ -64,74 +80,51 @@
                 }
                 .amina-label.visible { opacity: 1; }
                 .amina-name { font-size: 12px; color: ${config.textColor || '#666666'}; margin-top: 6px; }
-
-                /* Панель чата */
                 .amina-panel {
-                    position: fixed;
-                    bottom: 0; right: 0;
-                    width: 380px;
-                    height: 580px;
-                    background: white;
-                    border-radius: 16px 16px 0 0;
+                    position: fixed; bottom: 0; right: 0;
+                    width: 380px; height: 580px;
+                    background: white; border-radius: 16px 16px 0 0;
                     box-shadow: 0 -4px 30px rgba(0,0,0,0.15);
-                    z-index: 99999;
-                    display: flex;
-                    flex-direction: column;
-                    overflow: hidden;
-                    animation: slideIn 0.3s ease;
+                    z-index: 99999; display: flex; flex-direction: column;
+                    overflow: hidden; animation: slideIn 0.3s ease;
                     font-family: 'Segoe UI', Roboto, Arial, sans-serif;
                 }
-                .amina-panel.closing {
-                    animation: slideOut 0.3s ease forwards;
-                }
+                .amina-panel.closing { animation: slideOut 0.3s ease forwards; }
                 .amina-panel-header {
                     padding: 14px 16px;
                     background: linear-gradient(135deg, ${config.colorStart}, ${config.colorEnd});
-                    color: white;
-                    display: flex;
-                    align-items: center;
-                    gap: 10px;
-                    flex-shrink: 0;
+                    color: white; display: flex; align-items: center; gap: 10px; flex-shrink: 0;
                 }
                 .amina-panel-header img {
                     width: 36px; height: 36px; border-radius: 50%;
-                    border: 2px solid rgba(255,255,255,0.4);
-                    object-fit: cover;
+                    border: 2px solid rgba(255,255,255,0.4); object-fit: cover;
                 }
-                .amina-panel-header-name {
-                    font-weight: bold; font-size: 15px; flex: 1;
-                }
+                .amina-panel-header-name { font-weight: bold; font-size: 15px; flex: 1; }
                 .amina-panel-close {
                     background: none; border: none; color: white;
                     font-size: 22px; cursor: pointer; padding: 0;
-                    line-height: 1; opacity: 0.8;
-                    transition: opacity 0.2s;
+                    line-height: 1; opacity: 0.8; transition: opacity 0.2s;
                     width: auto; height: auto; border-radius: 0;
                     box-shadow: none; animation: none;
                 }
                 .amina-panel-close:hover { opacity: 1; transform: none; }
                 .amina-messages {
                     flex: 1; overflow-y: auto; padding: 15px;
-                    display: flex; flex-direction: column; gap: 10px;
-                    background: #f0f2f5;
+                    display: flex; flex-direction: column; gap: 10px; background: #f0f2f5;
                 }
                 .amina-msg {
                     padding: 10px 14px; border-radius: 18px;
                     max-width: 80%; font-size: 14px; line-height: 1.4;
-                    word-wrap: break-word;
-                    animation: fadeInMsg 0.3s ease;
+                    word-wrap: break-word; animation: fadeInMsg 0.3s ease;
                 }
                 .amina-msg.bot {
-                    align-self: flex-start;
-                    background: white; color: #333;
-                    border-bottom-left-radius: 4px;
-                    box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+                    align-self: flex-start; background: white; color: #333;
+                    border-bottom-left-radius: 4px; box-shadow: 0 1px 2px rgba(0,0,0,0.1);
                 }
                 .amina-msg.user {
                     align-self: flex-end;
                     background: linear-gradient(135deg, ${config.colorStart}, ${config.colorEnd});
-                    color: white;
-                    border-bottom-right-radius: 4px;
+                    color: white; border-bottom-right-radius: 4px;
                 }
                 .amina-typing {
                     display: flex; gap: 4px; align-self: flex-start;
@@ -150,27 +143,21 @@
                 }
                 .amina-input-area {
                     padding: 12px; background: white;
-                    display: flex; gap: 8px;
-                    border-top: 1px solid #eee; flex-shrink: 0;
+                    display: flex; gap: 8px; border-top: 1px solid #eee; flex-shrink: 0;
                 }
                 .amina-input {
-                    flex: 1; padding: 10px 14px;
-                    border: 1px solid #ddd; border-radius: 22px;
-                    outline: none; font-size: 14px;
-                    font-family: inherit;
-                    transition: border-color 0.2s;
+                    flex: 1; padding: 10px 14px; border: 1px solid #ddd;
+                    border-radius: 22px; outline: none; font-size: 14px;
+                    font-family: inherit; transition: border-color 0.2s;
                 }
-                .amina-input:focus {
-                    border-color: ${config.colorStart};
-                }
+                .amina-input:focus { border-color: ${config.colorStart}; }
                 .amina-send {
                     border: none;
                     background: linear-gradient(135deg, ${config.colorStart}, ${config.colorEnd});
                     color: white; width: 38px; height: 38px;
                     border-radius: 50%; cursor: pointer;
                     display: flex; align-items: center; justify-content: center;
-                    font-size: 16px; flex-shrink: 0;
-                    transition: opacity 0.2s;
+                    font-size: 16px; flex-shrink: 0; transition: opacity 0.2s;
                     animation: none; box-shadow: none;
                 }
                 .amina-send:hover { opacity: 0.9; transform: none; }
@@ -181,7 +168,6 @@
             // Виджет кнопка
             const widget = document.createElement('div');
             widget.className = 'amina-widget';
-
             const label = document.createElement('div');
             label.className = 'amina-label';
             const textSpan = document.createElement('span');
@@ -189,25 +175,24 @@
             nameDiv.className = 'amina-name';
             label.appendChild(textSpan);
             label.appendChild(nameDiv);
-
             const btn = document.createElement('button');
             btn.className = 'amina-btn';
             btn.innerHTML = `<img src="${config.avatarUrl}" alt="${config.botName}" onerror="this.src='https://via.placeholder.com/60'">`;
-
             widget.appendChild(label);
             widget.appendChild(btn);
             document.body.appendChild(widget);
 
-            // Панель чата
             let panel = null;
             let isOpen = false;
             let isLoading = false;
-            let chatHistory = [];
+
+            function saveHistory() {
+                historyRef.set(chatHistory);
+            }
 
             function openPanel() {
                 if (isOpen) return;
                 isOpen = true;
-
                 panel = document.createElement('div');
                 panel.className = 'amina-panel';
                 panel.innerHTML = `
@@ -224,10 +209,17 @@
                 `;
                 document.body.appendChild(panel);
 
-                // Приветствие
-                if (chatHistory.length === 0 && config.text1) {
+                // Показываем историю из Firebase
+                if (chatHistory.length > 0) {
+                    chatHistory.forEach(msg => {
+                        if (msg.role !== 'system') {
+                            addMsg(msg.content, msg.role === 'assistant' ? 'bot' : 'user');
+                        }
+                    });
+                } else if (config.text1) {
                     addMsg(config.text1, 'bot');
                     chatHistory.push({ role: 'assistant', content: config.text1 });
+                    saveHistory();
                 }
 
                 document.getElementById('amina-close').onclick = closePanel;
@@ -240,11 +232,7 @@
             function closePanel() {
                 if (!panel) return;
                 panel.classList.add('closing');
-                setTimeout(() => {
-                    panel.remove();
-                    panel = null;
-                    isOpen = false;
-                }, 300);
+                setTimeout(() => { panel.remove(); panel = null; isOpen = false; }, 300);
             }
 
             async function sendMsg() {
@@ -257,6 +245,7 @@
                 addMsg(text, 'user');
                 input.value = '';
                 chatHistory.push({ role: 'user', content: text });
+                saveHistory();
 
                 const typingDiv = document.createElement('div');
                 typingDiv.className = 'amina-typing';
@@ -274,13 +263,13 @@
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ clientId, messages: chatHistory })
                     });
-
                     typingDiv.remove();
                     const result = await res.json();
                     if (!res.ok) throw new Error(result.error || 'API error');
 
                     addMsg(result.text, 'bot');
                     chatHistory.push({ role: 'assistant', content: result.text });
+                    saveHistory();
 
                 } catch (e) {
                     typingDiv.remove();
@@ -309,7 +298,6 @@
             btn.onclick = () => isOpen ? closePanel() : openPanel();
             label.onclick = () => isOpen ? closePanel() : openPanel();
 
-            // Анимация текста
             async function typeText() {
                 label.classList.add('visible');
                 if (config.text1) {
@@ -334,6 +322,16 @@
         } catch (e) {
             console.error('Almina Widget Error:', e);
         }
+    }
+
+    function loadScript(src) {
+        return new Promise((resolve, reject) => {
+            const script = document.createElement('script');
+            script.src = src;
+            script.onload = resolve;
+            script.onerror = reject;
+            document.head.appendChild(script);
+        });
     }
 
     if (document.readyState === 'loading') {
