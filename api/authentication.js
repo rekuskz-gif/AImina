@@ -35,15 +35,11 @@ module.exports = async (req, res) => {
 
     for (let i = 0; i < sheet.rowCount; i++) {
       const val = sheet.getCell(i, 0).value;
-      console.log(`🔍 Строка ${i}: "${val}"`);
       if (val === clientId) {
         foundRow = i;
         break;
       }
     }
-
-    console.log('✅ foundRow:', foundRow);
-    console.log('📋 defaultRow:', defaultRow);
 
     if (foundRow === null) {
       return res.status(404).json({ error: "Клиент не найден" });
@@ -55,11 +51,14 @@ module.exports = async (req, res) => {
     const claudeKey   = get(4);
     const googleDocId = get(3);
     const avatarUrl   = get(8);
+    const tgToken     = get(5);
+    const tgChatId    = get(6);
 
     console.log('📊 status:', status);
     console.log('🔑 claudeKey:', claudeKey ? 'есть' : 'НЕТ');
     console.log('📄 googleDocId:', googleDocId);
-    console.log('🖼️ avatarUrl:', avatarUrl);
+    console.log('📱 tgToken:', tgToken ? 'есть' : 'НЕТ');
+    console.log('💬 tgChatId:', tgChatId);
 
     if (status !== 'active') {
       return res.status(403).json({ error: "Агент не активен" });
@@ -69,10 +68,33 @@ module.exports = async (req, res) => {
       return res.status(500).json({ error: "API ключ не найден" });
     }
 
+    // Последнее сообщение юзера
+    const lastMessage = messages[messages.length - 1];
+    const userText = lastMessage && lastMessage.role === 'user' ? lastMessage.content : null;
+
+    // Отправляем в Телеграм
+    if (tgToken && tgChatId && userText) {
+      try {
+        const tgText = `👤 *Юзер с сайта [${clientId}]:*\n${userText}`;
+        await fetch(`https://api.telegram.org/bot${tgToken}/sendMessage`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            chat_id: tgChatId,
+            text: tgText,
+            parse_mode: 'Markdown'
+          })
+        });
+        console.log('✅ Сообщение отправлено в Телеграм');
+      } catch (e) {
+        console.error('❌ Ошибка отправки в Телеграм:', e.message);
+      }
+    }
+
+    // Читаем промпт из Google Doc
     let systemPrompt = "Ты полезный ИИ ассистент";
     if (googleDocId) {
       try {
-        console.log('📖 Читаем Google Doc:', googleDocId);
         const docsClient = google.docs({ version: 'v1', auth });
         const docRes = await docsClient.documents.get({ documentId: googleDocId });
         systemPrompt = docRes.data.body.content
@@ -82,15 +104,13 @@ module.exports = async (req, res) => {
             .join(''))
           .join('')
           .trim();
-        console.log('✅ Промпт загружен, длина:', systemPrompt.length, 'символов');
-        console.log('📝 Начало промпта:', systemPrompt.substring(0, 100));
+        console.log('✅ Промпт загружен, длина:', systemPrompt.length);
       } catch (e) {
         console.error('❌ Ошибка чтения промпта:', e.message);
       }
-    } else {
-      console.log('⚠️ googleDocId пустой — промпт по умолчанию');
     }
 
+    // Отправляем в Claude
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -110,12 +130,31 @@ module.exports = async (req, res) => {
     console.log('🤖 Claude ответил:', response.ok ? 'OK' : 'ОШИБКА');
 
     if (!response.ok) {
-      console.error('❌ Claude error:', data);
       return res.status(response.status).json({ error: "Ошибка Claude API", details: data });
     }
 
-    return res.status(200).json({ 
-      text: data.content[0].text,
+    const botText = data.content[0].text;
+
+    // Отправляем ответ бота тоже в Телеграм
+    if (tgToken && tgChatId) {
+      try {
+        const tgBotText = `🤖 *ИИ ответил:*\n${botText}`;
+        await fetch(`https://api.telegram.org/bot${tgToken}/sendMessage`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            chat_id: tgChatId,
+            text: tgBotText,
+            parse_mode: 'Markdown'
+          })
+        });
+      } catch (e) {
+        console.error('❌ Ошибка отправки ответа в Телеграм:', e.message);
+      }
+    }
+
+    return res.status(200).json({
+      text: botText,
       avatarUrl: avatarUrl || null
     });
 
