@@ -21,7 +21,6 @@ module.exports = async (req, res) => {
     if (callback_query) {
       const data = callback_query.data;
       const chatId = callback_query.message.chat.id;
-      const messageId = callback_query.message.message_id;
       const tgToken = process.env.TG_BOT_TOKEN;
       const db = admin.database();
 
@@ -30,27 +29,14 @@ module.exports = async (req, res) => {
       const clientId = parts[1];
       const sessionId = parts[2];
 
-      const sessionRef = db.ref(`chats/${clientId}/${sessionId}`);
+      console.log('🔘 Кнопка:', action, clientId, sessionId);
+
+      // Сохраняем aiEnabled отдельно
+      const aiEnabledRef = db.ref(`chats/${clientId}/${sessionId}/aiEnabled`);
 
       if (action === 'ai_off') {
-        // Выключаем ИИ
-        await sessionRef.update({ aiEnabled: false });
+        await aiEnabledRef.set(false);
         console.log('⏸️ ИИ выключен для', clientId, sessionId);
-
-        // Меняем кнопку
-        await fetch(`https://api.telegram.org/bot${tgToken}/editMessageReplyMarkup`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            chat_id: chatId,
-            message_id: messageId,
-            reply_markup: {
-              inline_keyboard: [[
-                { text: '👤 Менеджер отвечает', callback_data: `ai_on:${clientId}:${sessionId}` }
-              ]]
-            }
-          })
-        });
 
         await fetch(`https://api.telegram.org/bot${tgToken}/answerCallbackQuery`, {
           method: 'POST',
@@ -61,25 +47,18 @@ module.exports = async (req, res) => {
           })
         });
 
-      } else if (action === 'ai_on') {
-        // Включаем ИИ
-        await sessionRef.update({ aiEnabled: true });
-        console.log('▶️ ИИ включён для', clientId, sessionId);
-
-        // Меняем кнопку
-        await fetch(`https://api.telegram.org/bot${tgToken}/editMessageReplyMarkup`, {
+        await fetch(`https://api.telegram.org/bot${tgToken}/sendMessage`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             chat_id: chatId,
-            message_id: messageId,
-            reply_markup: {
-              inline_keyboard: [[
-                { text: '🤖 ИИ включён', callback_data: `ai_off:${clientId}:${sessionId}` }
-              ]]
-            }
+            text: `⏸️ ИИ выключен для [${clientId}]\nТеперь менеджер отвечает юзеру вручную.`
           })
         });
+
+      } else if (action === 'ai_on') {
+        await aiEnabledRef.set(true);
+        console.log('▶️ ИИ включён для', clientId, sessionId);
 
         await fetch(`https://api.telegram.org/bot${tgToken}/answerCallbackQuery`, {
           method: 'POST',
@@ -87,6 +66,15 @@ module.exports = async (req, res) => {
           body: JSON.stringify({
             callback_query_id: callback_query.id,
             text: '▶️ ИИ включён!'
+          })
+        });
+
+        await fetch(`https://api.telegram.org/bot${tgToken}/sendMessage`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            chat_id: chatId,
+            text: `▶️ ИИ включён для [${clientId}]\nБот снова отвечает автоматически.`
           })
         });
       }
@@ -120,11 +108,11 @@ module.exports = async (req, res) => {
     const chatId = message.chat.id;
 
     const db = admin.database();
-    const historyRef = db.ref(`chats/${clientId}/${sessionId}`);
 
-    const snapshot = await historyRef.once('value');
-    const sessionData = snapshot.val() || {};
-    const chatHistory = Array.isArray(sessionData) ? sessionData : (sessionData.messages || []);
+    // Читаем историю из messages
+    const messagesRef = db.ref(`chats/${clientId}/${sessionId}/messages`);
+    const snapshot = await messagesRef.once('value');
+    const chatHistory = snapshot.val() || [];
 
     chatHistory.push({
       role: 'assistant',
@@ -132,7 +120,7 @@ module.exports = async (req, res) => {
       fromManager: true
     });
 
-    await historyRef.update({ messages: chatHistory });
+    await messagesRef.set(chatHistory);
     console.log('✅ Ответ менеджера сохранён в Firebase');
 
     await fetch(`https://api.telegram.org/bot${tgToken}/sendMessage`, {
