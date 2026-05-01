@@ -74,12 +74,11 @@ module.exports = async (req, res) => {
       return res.status(500).json({ error: "API ключ не найден" });
     }
 
-    // Проверяем флаг aiEnabled в Firebase
+    // Читаем aiEnabled отдельно
     const db = admin.database();
-    const sessionRef = db.ref(`chats/${clientId}/${sessionId}`);
-    const sessionSnap = await sessionRef.once('value');
-    const sessionData = sessionSnap.val() || {};
-    const aiEnabled = sessionData.aiEnabled !== false;
+    const aiEnabledRef = db.ref(`chats/${clientId}/${sessionId}/aiEnabled`);
+    const aiEnabledSnap = await aiEnabledRef.once('value');
+    const aiEnabled = aiEnabledSnap.val() !== false;
     console.log('🤖 aiEnabled:', aiEnabled);
 
     const lastMessage = messages[messages.length - 1];
