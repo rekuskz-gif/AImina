@@ -102,6 +102,12 @@ module.exports = async (req, res) => {
       }
     }
 
+    // Очищаем историю от лишних полей перед отправкой в Claude
+    const cleanMessages = messages.map(msg => ({
+      role: msg.role,
+      content: msg.content
+    }));
+
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -113,7 +119,7 @@ module.exports = async (req, res) => {
         model: "claude-haiku-4-5-20251001",
         max_tokens: 1024,
         system: systemPrompt,
-        messages: messages
+        messages: cleanMessages
       })
     });
 
