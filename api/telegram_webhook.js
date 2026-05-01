@@ -1,6 +1,5 @@
 const admin = require('firebase-admin');
 
-// Инициализация Firebase Admin
 if (!admin.apps.length) {
   admin.initializeApp({
     credential: admin.credential.cert({
@@ -13,55 +12,55 @@ if (!admin.apps.length) {
 }
 
 module.exports = async (req, res) => {
-  res.setHeader('Access-Control-Allow-Origin', '*');
   if (req.method !== 'POST') return res.status(200).end();
 
   try {
     const { message } = req.body;
     if (!message || !message.text) return res.status(200).end();
-
-    // Игнорируем сообщения от бота
     if (message.from && message.from.is_bot) return res.status(200).end();
 
-    const text = message.text;
-    const chatId = message.chat.id;
-
-    // Ищем sessionId из текста или reply
-    // Формат: менеджер отвечает на сообщение юзера
-    if (!message.reply_to_message) {
-      return res.status(200).end(); // Только ответы на сообщения
-    }
+    // Только ответы на сообщения
+    if (!message.reply_to_message) return res.status(200).end();
 
     const originalText = message.reply_to_message.text || '';
-    
-    // Извлекаем clientId и sessionId из оригинального сообщения
-    const clientIdMatch = originalText.match(/\[(.+?)\]/);
-    const sessionIdMatch = originalText.match(/session: (.+?)(\n|$)/);
+    console.log('📨 Оригинальное сообщение:', originalText);
 
-    if (!clientIdMatch) return res.status(200).end();
+    // Извлекаем clientId из [mina_001]
+    const clientIdMatch = originalText.match(/\[(.+?)\]/);
+    // Извлекаем sessionId из "session: user_xxx"
+    const sessionIdMatch = originalText.match(/session: (user_\w+)/);
+
+    console.log('🔍 clientId:', clientIdMatch?.[1]);
+    console.log('🔍 sessionId:', sessionIdMatch?.[1]);
+
+    if (!clientIdMatch || !sessionIdMatch) {
+      console.log('❌ Не найден clientId или sessionId');
+      return res.status(200).end();
+    }
 
     const clientId = clientIdMatch[1];
-    const sessionId = sessionIdMatch ? sessionIdMatch[1] : null;
+    const sessionId = sessionIdMatch[1];
+    const managerText = message.text;
+    const tgToken = process.env.TG_BOT_TOKEN;
+    const chatId = message.chat.id;
 
-    if (!sessionId) return res.status(200).end();
-
-    // Сохраняем ответ менеджера в Firebase
+    // Сохраняем в Firebase
     const db = admin.database();
     const historyRef = db.ref(`chats/${clientId}/${sessionId}`);
-    
+
     const snapshot = await historyRef.once('value');
     const chatHistory = snapshot.val() || [];
-    
+
     chatHistory.push({
       role: 'assistant',
-      content: `👤 Менеджер: ${text}`,
+      content: managerText,
       fromManager: true
     });
-    
-    await historyRef.set(chatHistory);
 
-    // Подтверждаем менеджеру
-    const tgToken = process.env.TG_BOT_TOKEN;
+    await historyRef.set(chatHistory);
+    console.log('✅ Ответ менеджера сохранён в Firebase');
+
+    // Подтверждение менеджеру
     await fetch(`https://api.telegram.org/bot${tgToken}/sendMessage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -74,7 +73,7 @@ module.exports = async (req, res) => {
     return res.status(200).json({ ok: true });
 
   } catch (error) {
-    console.error('Webhook error:', error);
+    console.error('❌ Webhook error:', error.message);
     return res.status(200).end();
   }
 };
