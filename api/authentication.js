@@ -9,8 +9,8 @@ module.exports = async (req, res) => {
   if (req.method === 'OPTIONS') return res.status(200).end();
 
   try {
-    const { clientId, messages } = req.body;
-    console.log('🔵 clientId:', clientId);
+    const { clientId, sessionId, messages } = req.body;
+    console.log('🔵 clientId:', clientId, 'sessionId:', sessionId);
 
     if (!clientId || !messages) {
       return res.status(400).json({ error: "clientId и messages обязательны" });
@@ -54,12 +54,6 @@ module.exports = async (req, res) => {
     const tgToken     = get(5);
     const tgChatId    = get(6);
 
-    console.log('📊 status:', status);
-    console.log('🔑 claudeKey:', claudeKey ? 'есть' : 'НЕТ');
-    console.log('📄 googleDocId:', googleDocId);
-    console.log('📱 tgToken:', tgToken ? 'есть' : 'НЕТ');
-    console.log('💬 tgChatId:', tgChatId);
-
     if (status !== 'active') {
       return res.status(403).json({ error: "Агент не активен" });
     }
@@ -68,14 +62,13 @@ module.exports = async (req, res) => {
       return res.status(500).json({ error: "API ключ не найден" });
     }
 
-    // Последнее сообщение юзера
     const lastMessage = messages[messages.length - 1];
     const userText = lastMessage && lastMessage.role === 'user' ? lastMessage.content : null;
 
-    // Отправляем в Телеграм
+    // Отправляем в Телеграм — добавляем sessionId!
     if (tgToken && tgChatId && userText) {
       try {
-        const tgText = `👤 *Юзер с сайта [${clientId}]:*\n${userText}`;
+        const tgText = `👤 *Юзер [${clientId}]:*\n${userText}\n\n_session: ${sessionId}_`;
         await fetch(`https://api.telegram.org/bot${tgToken}/sendMessage`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -110,7 +103,6 @@ module.exports = async (req, res) => {
       }
     }
 
-    // Отправляем в Claude
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -127,7 +119,6 @@ module.exports = async (req, res) => {
     });
 
     const data = await response.json();
-    console.log('🤖 Claude ответил:', response.ok ? 'OK' : 'ОШИБКА');
 
     if (!response.ok) {
       return res.status(response.status).json({ error: "Ошибка Claude API", details: data });
@@ -135,16 +126,15 @@ module.exports = async (req, res) => {
 
     const botText = data.content[0].text;
 
-    // Отправляем ответ бота тоже в Телеграм
+    // Ответ бота в Телеграм
     if (tgToken && tgChatId) {
       try {
-        const tgBotText = `🤖 *ИИ ответил:*\n${botText}`;
         await fetch(`https://api.telegram.org/bot${tgToken}/sendMessage`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             chat_id: tgChatId,
-            text: tgBotText,
+            text: `🤖 *ИИ ответил:*\n${botText}`,
             parse_mode: 'Markdown'
           })
         });
