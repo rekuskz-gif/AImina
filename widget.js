@@ -60,6 +60,11 @@
                     from { opacity: 0; transform: translateY(10px); }
                     to { opacity: 1; transform: translateY(0); }
                 }
+                @keyframes notifyPulse {
+                    0% { box-shadow: 0 0 0 0 rgba(255,0,0,0.7); }
+                    70% { box-shadow: 0 0 0 15px rgba(255,0,0,0); }
+                    100% { box-shadow: 0 0 0 0 rgba(255,0,0,0); }
+                }
                 .amina-widget {
                     position: fixed; bottom: 20px; right: 20px;
                     z-index: 9999; display: flex; align-items: center; gap: 10px;
@@ -72,9 +77,19 @@
                     align-items: center; justify-content: center;
                     transition: transform 0.2s;
                     box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+                    position: relative;
                 }
                 .amina-btn:hover { transform: scale(1.05); }
                 .amina-btn img { width: 58px; height: 58px; border-radius: 50%; }
+                .amina-btn.has-message { animation: notifyPulse 1s infinite !important; }
+                .amina-badge {
+                    position: absolute; top: 0; right: 0;
+                    background: red; color: white;
+                    width: 20px; height: 20px; border-radius: 50%;
+                    font-size: 12px; font-weight: bold;
+                    display: flex; align-items: center; justify-content: center;
+                    display: none;
+                }
                 .amina-label {
                     background: ${config.bgColor || '#ffffff'};
                     padding: 12px 16px; border-radius: 8px;
@@ -187,7 +202,7 @@
             label.appendChild(nameDiv);
             const btn = document.createElement('button');
             btn.className = 'amina-btn';
-            btn.innerHTML = `<img src="${config.avatarUrl}" alt="${config.botName}" onerror="this.src='https://via.placeholder.com/60'">`;
+            btn.innerHTML = `<img src="${config.avatarUrl}" alt="${config.botName}" onerror="this.src='https://via.placeholder.com/60'"><span class="amina-badge" id="amina-badge">!</span>`;
             widget.appendChild(label);
             widget.appendChild(btn);
             document.body.appendChild(widget);
@@ -195,7 +210,7 @@
             let panel = null;
             let isOpen = false;
             let isLoading = false;
-            let lastMessageCount = chatHistory.length;
+            let pendingManagerMessages = [];
 
             function saveHistory() {
                 historyRef.set(chatHistory);
@@ -206,15 +221,25 @@
                 if (!snap.exists()) return;
                 const newHistory = snap.val() || [];
 
-                // Если новых сообщений больше чем у нас
                 if (newHistory.length > chatHistory.length) {
                     const newMessages = newHistory.slice(chatHistory.length);
                     chatHistory = newHistory;
 
-                    // Показываем только новые сообщения от менеджера
                     newMessages.forEach(msg => {
-                        if (msg.fromManager && isOpen) {
-                            addMsg(msg.content, 'manager');
+                        if (msg.fromManager) {
+                            if (isOpen) {
+                                // Панель открыта — показываем сразу
+                                addMsg(msg.content, 'manager');
+                            } else {
+                                // Панель закрыта — показываем уведомление
+                                pendingManagerMessages.push(msg);
+                                const badge = document.getElementById('amina-badge');
+                                if (badge) {
+                                    badge.style.display = 'flex';
+                                    badge.textContent = pendingManagerMessages.length;
+                                }
+                                btn.classList.add('has-message');
+                            }
                         }
                     });
                 }
@@ -223,6 +248,12 @@
             function openPanel() {
                 if (isOpen) return;
                 isOpen = true;
+
+                // Убираем уведомление
+                const badge = document.getElementById('amina-badge');
+                if (badge) badge.style.display = 'none';
+                btn.classList.remove('has-message');
+
                 panel = document.createElement('div');
                 panel.className = 'amina-panel';
                 panel.innerHTML = `
@@ -252,6 +283,8 @@
                     chatHistory.push({ role: 'assistant', content: config.text1 });
                     saveHistory();
                 }
+
+                pendingManagerMessages = [];
 
                 document.getElementById('amina-close').onclick = closePanel;
                 document.getElementById('amina-send').onclick = sendMsg;
