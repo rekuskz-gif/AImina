@@ -94,7 +94,6 @@
     <div id="chat-footer"></div>
 
     <script>
-        // Firebase инициализация
         const firebaseConfig = {
             apiKey: "AIzaSyBgXvb4GLdtaZlw5dgnYKGddOIpFYIXXAU",
             databaseURL: "https://aimina-d3597-default-rtdb.firebaseio.com",
@@ -106,7 +105,19 @@
 
         const params = new URLSearchParams(window.location.search);
         const clientId = params.get('clientId');
-        const historyRef = db.ref(`chats/${clientId}/chat`);
+
+        // Уникальный ID для каждого браузера
+        function getSessionId() {
+            let sessionId = localStorage.getItem(`aimina_session_${clientId}`);
+            if (!sessionId) {
+                sessionId = 'user_' + Math.random().toString(36).substr(2, 9) + '_' + Date.now();
+                localStorage.setItem(`aimina_session_${clientId}`, sessionId);
+            }
+            return sessionId;
+        }
+
+        const sessionId = getSessionId();
+        const historyRef = db.ref(`chats/${clientId}/${sessionId}`);
 
         let config = null;
         let isLoading = false;
@@ -161,7 +172,7 @@
                     footer.innerHTML = `<a href="${config.footerUrl || '#'}" target="_blank" style="color: ${config.footerColor || '#999'}">${config.footerText}</a>`;
                 }
 
-                // Загружаем историю из Firebase
+                // Загружаем историю этого браузера
                 const snapshot = await historyRef.once('value');
                 if (snapshot.exists()) {
                     chatHistory = snapshot.val() || [];
@@ -210,7 +221,7 @@
                 const res = await fetch('/api/authentication', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({ clientId, messages: chatHistory })
+                    body: JSON.stringify({ clientId, sessionId, messages: chatHistory })
                 });
                 typingDiv.remove();
                 const result = await res.json();
