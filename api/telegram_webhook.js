@@ -15,20 +15,95 @@ module.exports = async (req, res) => {
   if (req.method !== 'POST') return res.status(200).end();
 
   try {
-    const { message } = req.body;
+    const { message, callback_query } = req.body;
+
+    // Обработка нажатия кнопок
+    if (callback_query) {
+      const data = callback_query.data;
+      const chatId = callback_query.message.chat.id;
+      const messageId = callback_query.message.message_id;
+      const tgToken = process.env.TG_BOT_TOKEN;
+      const db = admin.database();
+
+      const parts = data.split(':');
+      const action = parts[0];
+      const clientId = parts[1];
+      const sessionId = parts[2];
+
+      const sessionRef = db.ref(`chats/${clientId}/${sessionId}`);
+
+      if (action === 'ai_off') {
+        // Выключаем ИИ
+        await sessionRef.update({ aiEnabled: false });
+        console.log('⏸️ ИИ выключен для', clientId, sessionId);
+
+        // Меняем кнопку
+        await fetch(`https://api.telegram.org/bot${tgToken}/editMessageReplyMarkup`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            chat_id: chatId,
+            message_id: messageId,
+            reply_markup: {
+              inline_keyboard: [[
+                { text: '👤 Менеджер отвечает', callback_data: `ai_on:${clientId}:${sessionId}` }
+              ]]
+            }
+          })
+        });
+
+        await fetch(`https://api.telegram.org/bot${tgToken}/answerCallbackQuery`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            callback_query_id: callback_query.id,
+            text: '⏸️ ИИ выключен! Теперь вы отвечаете.'
+          })
+        });
+
+      } else if (action === 'ai_on') {
+        // Включаем ИИ
+        await sessionRef.update({ aiEnabled: true });
+        console.log('▶️ ИИ включён для', clientId, sessionId);
+
+        // Меняем кнопку
+        await fetch(`https://api.telegram.org/bot${tgToken}/editMessageReplyMarkup`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            chat_id: chatId,
+            message_id: messageId,
+            reply_markup: {
+              inline_keyboard: [[
+                { text: '🤖 ИИ включён', callback_data: `ai_off:${clientId}:${sessionId}` }
+              ]]
+            }
+          })
+        });
+
+        await fetch(`https://api.telegram.org/bot${tgToken}/answerCallbackQuery`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            callback_query_id: callback_query.id,
+            text: '▶️ ИИ включён!'
+          })
+        });
+      }
+
+      return res.status(200).json({ ok: true });
+    }
+
+    // Обработка обычных сообщений
     if (!message || !message.text) return res.status(200).end();
     if (message.from && message.from.is_bot) return res.status(200).end();
-
-    // Только ответы на сообщения
     if (!message.reply_to_message) return res.status(200).end();
 
     const originalText = message.reply_to_message.text || '';
     console.log('📨 Оригинальное сообщение:', originalText);
 
-    // Извлекаем clientId из [mina_001]
     const clientIdMatch = originalText.match(/\[(.+?)\]/);
-    // Извлекаем sessionId — любое слово после "session: "
-    const sessionIdMatch = originalText.match(/session: (\S+)/);
+    const sessionIdMatch = originalText.match(/session: ([^\s\n\r]+)/);
 
     console.log('🔍 clientId:', clientIdMatch?.[1]);
     console.log('🔍 sessionId:', sessionIdMatch?.[1]);
@@ -44,14 +119,12 @@ module.exports = async (req, res) => {
     const tgToken = process.env.TG_BOT_TOKEN;
     const chatId = message.chat.id;
 
-    console.log('✅ clientId:', clientId, 'sessionId:', sessionId);
-
-    // Сохраняем в Firebase
     const db = admin.database();
     const historyRef = db.ref(`chats/${clientId}/${sessionId}`);
 
     const snapshot = await historyRef.once('value');
-    const chatHistory = snapshot.val() || [];
+    const sessionData = snapshot.val() || {};
+    const chatHistory = Array.isArray(sessionData) ? sessionData : (sessionData.messages || []);
 
     chatHistory.push({
       role: 'assistant',
@@ -59,10 +132,9 @@ module.exports = async (req, res) => {
       fromManager: true
     });
 
-    await historyRef.set(chatHistory);
+    await historyRef.update({ messages: chatHistory });
     console.log('✅ Ответ менеджера сохранён в Firebase');
 
-    // Подтверждение менеджеру
     await fetch(`https://api.telegram.org/bot${tgToken}/sendMessage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
