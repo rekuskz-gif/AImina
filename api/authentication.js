@@ -79,23 +79,25 @@ module.exports = async (req, res) => {
     const sessionRef = db.ref(`chats/${clientId}/${sessionId}`);
     const sessionSnap = await sessionRef.once('value');
     const sessionData = sessionSnap.val() || {};
-    const aiEnabled = sessionData.aiEnabled !== false; // по умолчанию включён
-
+    
+    // По умолчанию ИИ включён
+    const aiEnabled = sessionData.aiEnabled !== false;
     console.log('🤖 aiEnabled:', aiEnabled);
 
     const lastMessage = messages[messages.length - 1];
     const userText = lastMessage && lastMessage.role === 'user' ? lastMessage.content : null;
 
-    // Отправляем в Телеграм с кнопками
+    // Отправляем в Телеграм с правильной кнопкой
     if (tgToken && tgChatId && userText) {
       try {
         const tgText = `👤 Юзер [${clientId}]:\n${userText}\n\nsession: ${sessionId}`;
-        
-        const keyboard = aiEnabled ? [
-          [{ text: '🤖 ИИ включён', callback_data: `ai_off:${clientId}:${sessionId}` }]
-        ] : [
-          [{ text: '👤 Менеджер отвечает', callback_data: `ai_on:${clientId}:${sessionId}` }]
-        ];
+
+        // Кнопка показывает ТЕКУЩИЙ статус
+        const keyboard = aiEnabled ? [[
+          { text: '🤖 ИИ включён — выключить', callback_data: `ai_off:${clientId}:${sessionId}` }
+        ]] : [[
+          { text: '👤 Менеджер отвечает — включить ИИ', callback_data: `ai_on:${clientId}:${sessionId}` }
+        ]];
 
         await fetch(`https://api.telegram.org/bot${tgToken}/sendMessage`, {
           method: 'POST',
@@ -103,12 +105,10 @@ module.exports = async (req, res) => {
           body: JSON.stringify({
             chat_id: tgChatId,
             text: tgText,
-            reply_markup: {
-              inline_keyboard: keyboard
-            }
+            reply_markup: { inline_keyboard: keyboard }
           })
         });
-        console.log('✅ Сообщение отправлено в Телеграм');
+        console.log('✅ Сообщение отправлено в Телеграм, aiEnabled:', aiEnabled);
       } catch (e) {
         console.error('❌ Ошибка отправки в Телеграм:', e.message);
       }
@@ -116,7 +116,7 @@ module.exports = async (req, res) => {
 
     // Если ИИ выключен — не отвечаем
     if (!aiEnabled) {
-      console.log('⏸️ ИИ выключен для этого чата');
+      console.log('⏸️ ИИ выключен для этого чата — менеджер отвечает');
       return res.status(200).json({ text: null, aiDisabled: true });
     }
 
