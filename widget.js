@@ -38,7 +38,8 @@
             let chatHistory = [];
             const snapshot = await historyRef.once('value');
             if (snapshot.exists()) {
-                chatHistory = snapshot.val() || [];
+                const val = snapshot.val();
+                chatHistory = Array.isArray(val) ? val : [];
             }
 
             const style = document.createElement('style');
@@ -87,7 +88,7 @@
                     background: red; color: white;
                     width: 20px; height: 20px; border-radius: 50%;
                     font-size: 12px; font-weight: bold;
-                    display: flex; align-items: center; justify-content: center;
+                    align-items: center; justify-content: center;
                     display: none;
                 }
                 .amina-label {
@@ -219,19 +220,18 @@
             // Слушаем Firebase в реальном времени
             historyRef.on('value', (snap) => {
                 if (!snap.exists()) return;
-                const newHistory = snap.val() || [];
+                const val = snap.val();
+                const newHistory = Array.isArray(val) ? val : [];
 
                 if (newHistory.length > chatHistory.length) {
                     const newMessages = newHistory.slice(chatHistory.length);
                     chatHistory = newHistory;
 
                     newMessages.forEach(msg => {
-                        if (msg.fromManager) {
+                        if (msg && msg.fromManager) {
                             if (isOpen) {
-                                // Панель открыта — показываем сразу
                                 addMsg(msg.content, 'manager');
                             } else {
-                                // Панель закрыта — показываем уведомление
                                 pendingManagerMessages.push(msg);
                                 const badge = document.getElementById('amina-badge');
                                 if (badge) {
@@ -249,7 +249,6 @@
                 if (isOpen) return;
                 isOpen = true;
 
-                // Убираем уведомление
                 const badge = document.getElementById('amina-badge');
                 if (badge) badge.style.display = 'none';
                 btn.classList.remove('has-message');
@@ -270,13 +269,11 @@
                 `;
                 document.body.appendChild(panel);
 
-                // Показываем всю историю
                 if (chatHistory.length > 0) {
                     chatHistory.forEach(msg => {
-                        if (msg.role !== 'system') {
-                            const type = msg.fromManager ? 'manager' : (msg.role === 'assistant' ? 'bot' : 'user');
-                            addMsg(msg.content, type);
-                        }
+                        if (!msg || msg.role === 'system') return;
+                        const type = msg.fromManager ? 'manager' : (msg.role === 'assistant' ? 'bot' : 'user');
+                        addMsg(msg.content, type);
                     });
                 } else if (config.text1) {
                     addMsg(config.text1, 'bot');
@@ -329,7 +326,15 @@
                     });
                     typingDiv.remove();
                     const result = await res.json();
+
+                    // Если ИИ выключен — просто молчим
+                    if (result.aiDisabled) {
+                        console.log('⏸️ ИИ выключен — ждём менеджера');
+                        return;
+                    }
+
                     if (!res.ok) throw new Error(result.error || 'API error');
+                    if (!result.text) return;
 
                     addMsg(result.text, 'bot');
                     chatHistory.push({ role: 'assistant', content: result.text });
@@ -337,8 +342,7 @@
 
                 } catch (e) {
                     typingDiv.remove();
-                    addMsg('❌ Ошибка соединения', 'bot');
-                    chatHistory.pop();
+                    console.error('Send error:', e);
                 } finally {
                     isLoading = false;
                     if (sendBtn) sendBtn.disabled = false;
