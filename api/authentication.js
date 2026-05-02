@@ -86,10 +86,11 @@ module.exports = async (req, res) => {
     await sheet.loadCells();
 
     // Найти строку клиента
+    // ✅ ИСПРАВЛЕНИЕ: Начинаем с i = 1 (строка 0 = шапка, строка 1+ = данные)
     const defaultRow = 1;
     let foundRow = null;
 
-    for (let i = 0; i < sheet.rowCount; i++) {
+    for (let i = 1; i < sheet.rowCount; i++) {
       if (sheet.getCell(i, 0).value === clientId) {
         foundRow = i;
         break;
