@@ -219,8 +219,13 @@ module.exports = async (req, res) => {
           }
         });
 
-        // ✅ Определяем статус ИИ
-        const statusText = aiEnabled ? '🟢 ИИ активен' : '🔴 Менеджер отвечает';
+        // ✅ Если ИИ ВЫКЛЮЧЕН - добавляем WARNING
+        let statusText = '';
+        if (!aiEnabled) {
+          statusText = `🔴 ИИ ВЫК. Отвечай через Reply!`;
+        } else {
+          statusText = `🟢 ИИ активен`;
+        }
         
         // ✅ Собираем сообщение с ПОЛНОЙ историей
         const tgText = `💬 Диалог #${dialogNum} [${clientId}]\n\n${dialogText}\n${statusText}\nsession: ${sessionId}`;
@@ -250,62 +255,19 @@ module.exports = async (req, res) => {
 
         console.log('✅ ПОЛНЫЙ ДИАЛОГ отправлен в Telegram');
 
+        // ✅ Если ИИ ВЫКЛЮЧЕН - возвращаем пусто
+        if (!aiEnabled) {
+          return res.status(200).json({
+            text: null,
+            aiDisabled: true,
+            avatarUrl: avatarUrl
+          });
+        }
+
       } catch (e) {
         console.error('❌ Ошибка Telegram:', e.message);
       }
     }
-
-    // ============================================================
-    // ШАГ 8: Если ИИ выключен - отправляем WARNING в Telegram
-    // ============================================================
-
-    
-    if (!aiEnabled) {
-      console.log('⏸️ ИИ выключен, отправляем ВЕСЬ ДИАЛОГ менеджеру');
-      
-      if (tgToken && tgChatId) {
-        try {
-          // ✅ Форматируем ВСЕ сообщения из истории
-          let dialogText = '';
-          messages.forEach(msg => {
-            if (msg.role === 'user') {
-              dialogText += `👤 Юзер: ${msg.content}\n`;
-            } else if (msg.role === 'assistant') {
-              dialogText += `🤖 Амина: ${msg.content}\n`;
-            }
-          });
-          
-          // ✅ Создаём сообщение с ПОЛНОЙ историей
-          const warningText = `ИИ вык.\n\n💬 Диалог #${dialogNum} [${clientId}]\n\n${dialogText}\n🔴 ИИ ВЫК. Отвечай через Reply!\nsession: ${sessionId}`;
-
-          const warningBody = {
-            chat_id: tgChatId,
-            text: warningText,
-          };
-
-          if (threadId) warningBody.message_thread_id = threadId;
-
-          await fetch(`https://api.telegram.org/bot${tgToken}/sendMessage`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(warningBody)
-          });
-
-          console.log('✅ ВЕСЬ ДИАЛОГ отправлен в Telegram');
-
-        } catch (e) {
-          console.error('❌ Ошибка отправки диалога:', e.message);
-        }
-      }
-      
-      // Возвращаем пусто - виджет будет ждать Reply менеджера
-      return res.status(200).json({
-        text: null,
-        aiDisabled: true,
-        avatarUrl: avatarUrl
-      });
-    }
-
 
     // ============================================================
     // ШАГ 9: Если ИИ включён - читаем промпт из Google Doc
