@@ -65,7 +65,7 @@ module.exports = async (req, res) => {
     // ============================================================
     
     console.log('📊 Читаем Google Sheet...');
-
+// v2.2 - cache buster
     const auth = new JWT({
       email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
       key: process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, '\n'),
