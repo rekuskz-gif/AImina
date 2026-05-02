@@ -17,7 +17,6 @@ module.exports = async (req, res) => {
   try {
     const { message, callback_query } = req.body;
 
-    // Обработка кнопок — используем | вместо :
     if (callback_query) {
       const data = callback_query.data;
       const chatId = callback_query.message.chat.id;
@@ -33,7 +32,6 @@ module.exports = async (req, res) => {
 
       console.log('✅ action:', action, 'clientId:', clientId, 'sessionId:', sessionId);
 
-      // Сохраняем aiEnabled в отдельном месте
       const aiEnabledRef = db.ref(`settings/${clientId}/${sessionId}/aiEnabled`);
 
       if (action === 'off') {
@@ -45,7 +43,7 @@ module.exports = async (req, res) => {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             callback_query_id: callback_query.id,
-            text: '⏸️ ИИ выключен!'
+            text: '🔴 ИИ выключен!'
           })
         });
 
@@ -54,7 +52,14 @@ module.exports = async (req, res) => {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             chat_id: chatId,
-            text: `🔴 ИИ выключен для [${clientId}]\nТеперь менеджер отвечает вручную!`
+            text: `🔴 [${clientId}] ИИ выключен\nМенеджер отвечает вручную`,
+            reply_markup: {
+              inline_keyboard: [[
+                { text: '🟢 Включить ИИ', callback_data: `on|${clientId}|${sessionId}` },
+                { text: '🔴 Менеджер', callback_data: `status|${clientId}|${sessionId}` },
+                { text: '📜 История', callback_data: `history|${clientId}|${sessionId}` }
+              ]]
+            }
           })
         });
 
@@ -67,7 +72,7 @@ module.exports = async (req, res) => {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             callback_query_id: callback_query.id,
-            text: '▶️ ИИ включён!'
+            text: '🟢 ИИ включён!'
           })
         });
 
@@ -76,7 +81,64 @@ module.exports = async (req, res) => {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             chat_id: chatId,
-            text: `🟢 ИИ включён для [${clientId}]\nБот снова отвечает автоматически!`
+            text: `🟢 [${clientId}] ИИ включён\nБот отвечает автоматически`,
+            reply_markup: {
+              inline_keyboard: [[
+                { text: '🟢 ИИ активен', callback_data: `status|${clientId}|${sessionId}` },
+                { text: '🔴 Выключить ИИ', callback_data: `off|${clientId}|${sessionId}` },
+                { text: '📜 История', callback_data: `history|${clientId}|${sessionId}` }
+              ]]
+            }
+          })
+        });
+
+      } else if (action === 'history') {
+        const historyRef = db.ref(`chats/${clientId}/${sessionId}`);
+        const snap = await historyRef.once('value');
+        const val = snap.val();
+        const history = Array.isArray(val) ? val : [];
+        const last5 = history.slice(-5);
+
+        let historyText = `📜 Последние сообщения [${clientId}]:\n\n`;
+        last5.forEach(msg => {
+          if (!msg) return;
+          if (msg.role === 'user') {
+            historyText += `👤 Юзер: ${msg.content}\n\n`;
+          } else if (msg.fromManager) {
+            historyText += `👨‍💼 Менеджер: ${msg.content}\n\n`;
+          } else {
+            historyText += `🤖 ИИ: ${msg.content}\n\n`;
+          }
+        });
+
+        await fetch(`https://api.telegram.org/bot${tgToken}/answerCallbackQuery`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            callback_query_id: callback_query.id,
+            text: '📜 История загружена!'
+          })
+        });
+
+        await fetch(`https://api.telegram.org/bot${tgToken}/sendMessage`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            chat_id: chatId,
+            text: historyText
+          })
+        });
+
+      } else if (action === 'status') {
+        const snap = await aiEnabledRef.once('value');
+        const aiEnabled = snap.val() !== false;
+
+        await fetch(`https://api.telegram.org/bot${tgToken}/answerCallbackQuery`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            callback_query_id: callback_query.id,
+            text: aiEnabled ? '🟢 ИИ сейчас активен' : '🔴 Менеджер сейчас отвечает'
           })
         });
 
@@ -87,7 +149,7 @@ module.exports = async (req, res) => {
       return res.status(200).json({ ok: true });
     }
 
-    // Обработка обычных сообщений от менеджера
+    // Обработка сообщений менеджера
     if (!message || !message.text) return res.status(200).end();
     if (message.from && message.from.is_bot) return res.status(200).end();
     if (!message.reply_to_message) return res.status(200).end();
@@ -113,13 +175,10 @@ module.exports = async (req, res) => {
     const chatId = message.chat.id;
 
     const db = admin.database();
-
-    // История хранится как массив в корне сессии
     const historyRef = db.ref(`chats/${clientId}/${sessionId}`);
     const snapshot = await historyRef.once('value');
-    const chatHistory = snapshot.val() || [];
-
-    const historyArray = Array.isArray(chatHistory) ? chatHistory : [];
+    const val = snapshot.val();
+    const historyArray = Array.isArray(val) ? val : [];
 
     historyArray.push({
       role: 'assistant',
