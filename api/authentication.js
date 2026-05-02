@@ -74,21 +74,44 @@ module.exports = async (req, res) => {
       return res.status(500).json({ error: "API ключ не найден" });
     }
 
-    // Читаем aiEnabled из отдельного места
     const db = admin.database();
+
+    // Читаем aiEnabled
     const aiEnabledRef = db.ref(`settings/${clientId}/${sessionId}/aiEnabled`);
     const aiEnabledSnap = await aiEnabledRef.once('value');
     const aiEnabled = aiEnabledSnap.val() !== false;
     console.log('🤖 aiEnabled:', aiEnabled);
 
+    // Получаем номер диалога
+    const dialogNumRef = db.ref(`settings/${clientId}/${sessionId}/dialogNum`);
+    const dialogNumSnap = await dialogNumRef.once('value');
+    let dialogNum = dialogNumSnap.val();
+    if (!dialogNum) {
+      const allRef = db.ref(`settings/${clientId}`);
+      const allSnap = await allRef.once('value');
+      const all = allSnap.val() || {};
+      dialogNum = Object.keys(all).length;
+      await dialogNumRef.set(dialogNum);
+    }
+
     const lastMessage = messages[messages.length - 1];
     const userText = lastMessage && lastMessage.role === 'user' ? lastMessage.content : null;
 
-    // Отправляем в Телеграм с двумя кнопками
+    // Отправляем в Телеграм
     if (tgToken && tgChatId && userText) {
       try {
-        const statusText = aiEnabled ? '🟢 ИИ сейчас отвечает' : '🔴 Менеджер сейчас отвечает';
-        const tgText = `👤 Юзер [${clientId}]:\n${userText}\n\n${statusText}\nsession: ${sessionId}`;
+        const statusText = aiEnabled ? '🟢 ИИ активен' : '🔴 Менеджер отвечает';
+        const tgText = `💬 Диалог #${dialogNum} [${clientId}]\n👤 Юзер: ${userText}\n\n${statusText}\nsession: ${sessionId}`;
+
+        const keyboard = aiEnabled ? [[
+          { text: '🟢 ИИ активен', callback_data: `status|${clientId}|${sessionId}` },
+          { text: '🔴 Выключить ИИ', callback_data: `off|${clientId}|${sessionId}` },
+          { text: '📜 История', callback_data: `history|${clientId}|${sessionId}` }
+        ]] : [[
+          { text: '🟢 Включить ИИ', callback_data: `on|${clientId}|${sessionId}` },
+          { text: '🔴 Менеджер', callback_data: `status|${clientId}|${sessionId}` },
+          { text: '📜 История', callback_data: `history|${clientId}|${sessionId}` }
+        ]];
 
         await fetch(`https://api.telegram.org/bot${tgToken}/sendMessage`, {
           method: 'POST',
@@ -96,12 +119,7 @@ module.exports = async (req, res) => {
           body: JSON.stringify({
             chat_id: tgChatId,
             text: tgText,
-            reply_markup: {
-              inline_keyboard: [[
-                { text: '🤖 Включить ИИ', callback_data: `on|${clientId}|${sessionId}` },
-                { text: '👤 Выключить ИИ', callback_data: `off|${clientId}|${sessionId}` }
-              ]]
-            }
+            reply_markup: { inline_keyboard: keyboard }
           })
         });
         console.log('✅ Сообщение отправлено в Телеграм');
@@ -110,7 +128,7 @@ module.exports = async (req, res) => {
       }
     }
 
-    // Если ИИ выключен — не отвечаем
+    // Если ИИ выключен — молчим
     if (!aiEnabled) {
       console.log('⏸️ ИИ выключен — менеджер отвечает');
       return res.status(200).json({ text: null, aiDisabled: true });
@@ -164,7 +182,6 @@ module.exports = async (req, res) => {
 
     const botText = data.content[0].text;
 
-    // Ответ бота в Телеграм
     if (tgToken && tgChatId) {
       try {
         await fetch(`https://api.telegram.org/bot${tgToken}/sendMessage`, {
