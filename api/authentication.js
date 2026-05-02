@@ -140,6 +140,116 @@ module.exports = async (req, res) => {
       return res.status(500).json({ error: "API ключ Claude не найден" });
     }
 
+
+// ============================================================
+    // ШАГ 3.5: Получить информацию о токенах из Google Sheet
+    // ============================================================
+    
+    console.log('💰 Читаем информацию о токенах...');
+    
+    const tokenBalance = get(9);        // J: Баланс (куплено токенов)
+    const tokenTariff = get(10);        // K: Тариф (цена за 1 символ)
+    let tokenSpent = get(11);           // L: Потрачено токенов
+    const resetDate = get(12);          // M: Дата скидания (когда обнулить)
+    
+    console.log(`💰 Токены: баланс=${tokenBalance}, тариф=${tokenTariff}, потрачено=${tokenSpent}, дата скидания=${resetDate}`);
+
+    
+
+   // ============================================================
+    // ШАГ 3.6: Проверить дату скидания и обнулить если нужно
+    // ============================================================
+    
+    console.log('🔄 Проверяем дату скидания...');
+    
+    const today = new Date();
+    
+    // ✅ Преобразуем дату из формата "01.06.2026" в "2026-06-01"
+    let resetDateFormatted = '';
+    if (resetDate && resetDate.includes('.')) {
+      const parts = resetDate.split('.');  // ["01", "06", "2026"]
+      resetDateFormatted = `${parts[2]}-${parts[1]}-${parts[0]}`;  // "2026-06-01"
+      console.log(`📅 Дата скидания парсена: ${resetDate} → ${resetDateFormatted}`);
+    } else {
+      resetDateFormatted = resetDate;
+      console.log(`📅 Дата скидания (формат ISO): ${resetDateFormatted}`);
+    }
+    
+    const reset = new Date(resetDateFormatted);
+    
+    console.log(`📅 Сегодня: ${today.toLocaleDateString('ru-RU')}, Дата скидания: ${reset.toLocaleDateString('ru-RU')}`);
+    
+    // Проверяем: наступила ли дата скидания?
+    if (today >= reset) {
+      console.log('🔄 Дата скидания наступила - обнуляем токены');
+      
+      try {
+        // ✅ ПИШЕМ 0 в колонку L (потрачено = 0)
+        await sheet.getCell(foundRow, 11).setValue(0);
+        console.log('✅ Потрачено обнулено (L = 0)');
+        
+        // ✅ ВЫЧИСЛЯЕМ новую дату (через месяц)
+        const nextReset = new Date(reset);
+        nextReset.setMonth(nextReset.getMonth() + 1);
+        const newResetDate = nextReset.toLocaleDateString('ru-RU');  // формат "01.07.2026"
+        
+        console.log(`📅 Новая дата скидания: ${newResetDate}`);
+        
+        // ✅ ПИШЕМ новую дату в колонку M
+        await sheet.getCell(foundRow, 12).setValue(newResetDate);
+        console.log(`✅ Дата обновлена в M (${newResetDate})`);
+        
+        // ✅ СОХРАНЯЕМ изменения в Google Sheet
+        await sheet.saveUpdatedCells();
+        console.log('✅ Изменения сохранены в Google Sheet');
+        
+        // ✅ ОБНОВЛЯЕМ переменную
+        tokenSpent = 0;
+        
+        console.log(`✅ Успешно! Токены обнулены. Новая дата скидания: ${newResetDate}`);
+        
+      } catch (e) {
+        console.error('❌ Ошибка при обнулении токенов:', e.message);
+        // Продолжаем работу, даже если ошибка при записи в Sheet
+      }
+    } else {
+      console.log('✅ Дата скидания ещё не наступила');
+    }
+
+    // ============================================================
+    // ШАГ 3.7: Проверить достаточно ли токенов
+    // ============================================================
+    
+    const remaining = tokenBalance - tokenSpent;
+    
+    console.log(`💰 Расчёт остатка: ${tokenBalance} - ${tokenSpent} = ${remaining} токенов`);
+    
+    if (remaining < 0) {
+      console.log(`⚠️ Остаток отрицательный! Токены закончились (остаток: ${remaining})`);
+    } else if (remaining === 0) {
+      console.log(`⚠️ Токены полностью использованы (остаток: 0)`);
+    } else {
+      console.log(`✅ Достаточно токенов (осталось: ${remaining})`);
+    }
+    
+    // Если токенов нет - блокируем запрос
+    if (remaining <= 0) {
+      console.log('❌ ЗАПРОС ЗАБЛОКИРОВАН: Токены закончились!');
+      return res.status(403).json({ 
+        error: "Токены закончились",
+        details: {
+          balance: tokenBalance,
+          spent: tokenSpent,
+          remaining: remaining,
+          resetDate: resetDate,
+          message: `Баланс: ${tokenBalance}, Потрачено: ${tokenSpent}, Осталось: ${remaining}. Пополните баланс или дождитесь даты скидания (${resetDate})`
+        }
+      });
+    }
+
+    console.log(`✅ Проверка токенов пройдена успешно. Остаток: ${remaining}`);
+
+    
     // ============================================================
     // ШАГ 4: Получить статус ИИ из Firebase
     // ============================================================
@@ -341,7 +451,48 @@ module.exports = async (req, res) => {
     console.log('✅ Claude ответил');
 
     // ============================================================
-    // ШАГ 12: Отправить ответ ИИ в Telegram
+    // ШАГ 12: НОВОЕ - Подсчитать и вычесть токены
+    // ============================================================
+    
+    console.log('💰 Подсчитываем потраченные токены...');
+    
+    // ✅ Считаем символы в ответе ИИ
+    const responseChars = botText.length;
+    console.log(`📝 Символов в ответе ИИ: ${responseChars}`);
+    
+    // ✅ Считаем стоимость ответа
+    const costResponse = responseChars * tokenTariff;
+    console.log(`💸 Стоимость ответа: ${responseChars} символов × ${tokenTariff} = ${costResponse.toFixed(4)} токенов`);
+    
+    // ✅ Новый счётчик потрачено
+    const newSpent = tokenSpent + costResponse;
+    console.log(`📊 Новый счётчик: ${tokenSpent} + ${costResponse.toFixed(4)} = ${newSpent.toFixed(4)} токенов`);
+    
+    // ✅ Проверяем что не превышаем баланс
+    const newRemaining = tokenBalance - newSpent;
+    console.log(`💰 Остаток после ответа: ${tokenBalance} - ${newSpent.toFixed(4)} = ${newRemaining.toFixed(4)} токенов`);
+    
+    if (newRemaining < 0) {
+      console.warn(`⚠️ ВНИМАНИЕ: Остаток стал отрицательным! ${newRemaining.toFixed(4)}`);
+    }
+    
+    try {
+      // ✅ ПИШЕМ новый счётчик в Google Sheet колонку L
+      await sheet.getCell(foundRow, 11).setValue(newSpent.toFixed(4));
+      console.log(`✅ Обновили колонку L (потрачено = ${newSpent.toFixed(4)})`);
+      
+      // ✅ СОХРАНЯЕМ изменения в Google Sheet
+      await sheet.saveUpdatedCells();
+      console.log('✅ Изменения сохранены в Google Sheet');
+      
+    } catch (e) {
+      console.error('❌ Ошибка при записи токенов в Sheet:', e.message);
+    }
+    
+    console.log(`✅ Успешно! Токены вычтены. Остаток: ${newRemaining.toFixed(4)}`);
+
+    // ============================================================
+    // ШАГ 13: Отправить ответ ИИ в Telegram
     // ============================================================
     
     if (tgToken && tgChatId) {
@@ -359,28 +510,26 @@ module.exports = async (req, res) => {
           body: JSON.stringify(replyBody)
         });
 
-        console.log('✅ Ответ в Telegram отправлен');
+        console.log('✅ Ответ ИИ отправлен в Telegram');
 
       } catch (e) {
-        console.error('❌ Ошибка отправки ответа:', e.message);
+        console.error('❌ Ошибка отправки ответа в Telegram:', e.message);
       }
     }
 
     // ============================================================
-    // ШАГ 13: Вернуть ответ виджету
+    // ШАГ 14: Вернуть ответ виджету
     // ============================================================
+    
+    console.log('📤 Возвращаем ответ виджету...');
     
     return res.status(200).json({
       text: botText,
       aiDisabled: false,
-      avatarUrl: avatarUrl || null
+      avatarUrl: avatarUrl || null,
+      tokenInfo: {
+        spent: newSpent.toFixed(4),
+        remaining: newRemaining.toFixed(4),
+        balance: tokenBalance
+      }
     });
-
-  } catch (error) {
-    console.error('❌ Auth Error:', error.message);
-    return res.status(500).json({
-      error: "Ошибка сервера",
-      message: error.message
-    });
-  }
-};
