@@ -76,13 +76,11 @@ module.exports = async (req, res) => {
 
     const db = admin.database();
 
-    // Читаем aiEnabled
     const aiEnabledRef = db.ref(`settings/${clientId}/${sessionId}/aiEnabled`);
     const aiEnabledSnap = await aiEnabledRef.once('value');
     const aiEnabled = aiEnabledSnap.val() !== false;
     console.log('🤖 aiEnabled:', aiEnabled);
 
-    // Получаем номер диалога
     const dialogNumRef = db.ref(`settings/${clientId}/${sessionId}/dialogNum`);
     const dialogNumSnap = await dialogNumRef.once('value');
     let dialogNum = dialogNumSnap.val();
@@ -97,19 +95,18 @@ module.exports = async (req, res) => {
     const lastMessage = messages[messages.length - 1];
     const userText = lastMessage && lastMessage.role === 'user' ? lastMessage.content : null;
 
-    // Отправляем в Телеграм
     if (tgToken && tgChatId && userText) {
       try {
         const statusText = aiEnabled ? '🟢 ИИ активен' : '🔴 Менеджер отвечает';
         const tgText = `💬 Диалог #${dialogNum} [${clientId}]\n👤 Юзер: ${userText}\n\n${statusText}\nsession: ${sessionId}`;
 
         const keyboard = aiEnabled ? [[
-          { text: '🟢 ИИ активен', callback_data: `status|${clientId}|${sessionId}` },
-          { text: '🔴 Выключить ИИ', callback_data: `off|${clientId}|${sessionId}` },
+          { text: '✅ ИИ активен', callback_data: `status|${clientId}|${sessionId}` },
+          { text: '👤 Выключить ИИ', callback_data: `off|${clientId}|${sessionId}` },
           { text: '📜 История', callback_data: `history|${clientId}|${sessionId}` }
         ]] : [[
           { text: '🟢 Включить ИИ', callback_data: `on|${clientId}|${sessionId}` },
-          { text: '🔴 Менеджер', callback_data: `status|${clientId}|${sessionId}` },
+          { text: '✅ Менеджер', callback_data: `status|${clientId}|${sessionId}` },
           { text: '📜 История', callback_data: `history|${clientId}|${sessionId}` }
         ]];
 
@@ -128,13 +125,11 @@ module.exports = async (req, res) => {
       }
     }
 
-    // Если ИИ выключен — молчим
     if (!aiEnabled) {
       console.log('⏸️ ИИ выключен — менеджер отвечает');
       return res.status(200).json({ text: null, aiDisabled: true });
     }
 
-    // Читаем промпт из Google Doc
     let systemPrompt = "Ты полезный ИИ ассистент";
     if (googleDocId) {
       try {
@@ -153,7 +148,6 @@ module.exports = async (req, res) => {
       }
     }
 
-    // Очищаем историю от лишних полей
     const cleanMessages = messages.map(msg => ({
       role: msg.role,
       content: msg.content
