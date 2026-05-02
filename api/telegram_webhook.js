@@ -20,10 +20,9 @@ module.exports = async (req, res) => {
     if (callback_query) {
       const data = callback_query.data;
       const chatId = callback_query.message.chat.id;
+      const messageId = callback_query.message.message_id;
       const tgToken = process.env.TG_BOT_TOKEN;
       const db = admin.database();
-
-      console.log('🔘 callback data:', data);
 
       const parts = data.split('|');
       const action = parts[0];
@@ -36,8 +35,8 @@ module.exports = async (req, res) => {
 
       if (action === 'off') {
         await aiEnabledRef.set(false);
-        console.log('⏸️ ИИ выключен для', clientId, sessionId);
 
+        // Отвечаем на нажатие
         await fetch(`https://api.telegram.org/bot${tgToken}/answerCallbackQuery`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -47,16 +46,33 @@ module.exports = async (req, res) => {
           })
         });
 
+        // Уведомление в чат
         await fetch(`https://api.telegram.org/bot${tgToken}/sendMessage`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             chat_id: chatId,
-            text: `🔴 Статус [${clientId}]: Менеджер отвечает вручную`,
+            text: `🔴 ИИ выключен для [${clientId}]\nМенеджер отвечает вручную`,
             reply_markup: {
               inline_keyboard: [[
                 { text: '🟢 Включить ИИ', callback_data: `on|${clientId}|${sessionId}` },
-                { text: '✅ Менеджер', callback_data: `status|${clientId}|${sessionId}` },
+                { text: '📜 История', callback_data: `history|${clientId}|${sessionId}` }
+              ]]
+            }
+          })
+        });
+
+        // Меняем кнопки на оригинальном сообщении
+        await fetch(`https://api.telegram.org/bot${tgToken}/editMessageReplyMarkup`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            chat_id: chatId,
+            message_id: messageId,
+            reply_markup: {
+              inline_keyboard: [[
+                { text: '🟢 Включить ИИ', callback_data: `on|${clientId}|${sessionId}` },
+                { text: '🔴 ✅ Менеджер', callback_data: `status|${clientId}|${sessionId}` },
                 { text: '📜 История', callback_data: `history|${clientId}|${sessionId}` }
               ]]
             }
@@ -65,7 +81,6 @@ module.exports = async (req, res) => {
 
       } else if (action === 'on') {
         await aiEnabledRef.set(true);
-        console.log('▶️ ИИ включён для', clientId, sessionId);
 
         await fetch(`https://api.telegram.org/bot${tgToken}/answerCallbackQuery`, {
           method: 'POST',
@@ -76,16 +91,33 @@ module.exports = async (req, res) => {
           })
         });
 
+        // Уведомление в чат
         await fetch(`https://api.telegram.org/bot${tgToken}/sendMessage`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             chat_id: chatId,
-            text: `🟢 Статус [${clientId}]: ИИ отвечает автоматически`,
+            text: `🟢 ИИ включён для [${clientId}]\nБот отвечает автоматически`,
+            reply_markup: {
+              inline_keyboard: [[
+                { text: '🔴 Выключить ИИ', callback_data: `off|${clientId}|${sessionId}` },
+                { text: '📜 История', callback_data: `history|${clientId}|${sessionId}` }
+              ]]
+            }
+          })
+        });
+
+        // Меняем кнопки на оригинальном сообщении
+        await fetch(`https://api.telegram.org/bot${tgToken}/editMessageReplyMarkup`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            chat_id: chatId,
+            message_id: messageId,
             reply_markup: {
               inline_keyboard: [[
                 { text: '✅ ИИ активен', callback_data: `status|${clientId}|${sessionId}` },
-                { text: '👤 Выключить ИИ', callback_data: `off|${clientId}|${sessionId}` },
+                { text: '🔴 Выключить ИИ', callback_data: `off|${clientId}|${sessionId}` },
                 { text: '📜 История', callback_data: `history|${clientId}|${sessionId}` }
               ]]
             }
@@ -151,8 +183,6 @@ module.exports = async (req, res) => {
     if (!message.reply_to_message) return res.status(200).end();
 
     const originalText = message.reply_to_message.text || '';
-    console.log('📨 Оригинальное сообщение:', originalText);
-
     const clientIdMatch = originalText.match(/\[(.+?)\]/);
     const sessionIdMatch = originalText.match(/session: ([^\s\n\r]+)/);
 
