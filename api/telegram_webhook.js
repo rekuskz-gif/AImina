@@ -38,26 +38,25 @@ module.exports = async (req, res) => {
       const db = admin.database();
 
       // Разбираем данные кнопки — формат: action|clientId|sessionId
-      // Например: off|mina_001|user_abc123
       const parts = data.split('|');
       const action = parts[0];    // off, on, history, status
       const clientId = parts[1];  // ID клиента
       const sessionId = parts[2]; // ID сессии юзера
 
       console.log('✅ action:', action, 'clientId:', clientId, 'sessionId:', sessionId);
+      console.log('💬 chatId:', chatId);
+      console.log('🔑 tgToken есть:', tgToken ? 'да' : 'НЕТ');
 
       // Ссылка на статус ИИ в Firebase
-      // Здесь хранится true/false — включён или выключен ИИ
       const aiEnabledRef = db.ref(`settings/${clientId}/${sessionId}/aiEnabled`);
 
       // ---- Кнопка "Выключить ИИ" ----
-      // Менеджер хочет сам отвечать юзеру
       if (action === 'off') {
         await aiEnabledRef.set(false);
         console.log('⏸️ ИИ выключен для', clientId, sessionId);
 
         // Показываем всплывающее уведомление менеджеру
-        await fetch(`https://api.telegram.org/bot${tgToken}/answerCallbackQuery`, {
+        const answerRes = await fetch(`https://api.telegram.org/bot${tgToken}/answerCallbackQuery`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -65,9 +64,11 @@ module.exports = async (req, res) => {
             text: '🔴 ИИ выключен!'
           })
         });
+        const answerData = await answerRes.json();
+        console.log('📨 answerCallbackQuery:', JSON.stringify(answerData));
 
-        // Отправляем новое сообщение в чат с кнопкой "Включить ИИ"
-        await fetch(`https://api.telegram.org/bot${tgToken}/sendMessage`, {
+        // Отправляем уведомление в чат
+        const sendRes = await fetch(`https://api.telegram.org/bot${tgToken}/sendMessage`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -81,16 +82,16 @@ module.exports = async (req, res) => {
             }
           })
         });
-        console.log('✅ Уведомление отправлено');
+        const sendData = await sendRes.json();
+        console.log('📨 sendMessage ответ:', JSON.stringify(sendData));
 
       // ---- Кнопка "Включить ИИ" ----
-      // Менеджер передаёт управление обратно боту
       } else if (action === 'on') {
         await aiEnabledRef.set(true);
         console.log('▶️ ИИ включён для', clientId, sessionId);
 
         // Показываем всплывающее уведомление менеджеру
-        await fetch(`https://api.telegram.org/bot${tgToken}/answerCallbackQuery`, {
+        const answerRes = await fetch(`https://api.telegram.org/bot${tgToken}/answerCallbackQuery`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -98,9 +99,11 @@ module.exports = async (req, res) => {
             text: '🟢 ИИ включён!'
           })
         });
+        const answerData = await answerRes.json();
+        console.log('📨 answerCallbackQuery:', JSON.stringify(answerData));
 
-        // Отправляем новое сообщение в чат с кнопкой "Выключить ИИ"
-        await fetch(`https://api.telegram.org/bot${tgToken}/sendMessage`, {
+        // Отправляем уведомление в чат
+        const sendRes = await fetch(`https://api.telegram.org/bot${tgToken}/sendMessage`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -114,17 +117,17 @@ module.exports = async (req, res) => {
             }
           })
         });
-        console.log('✅ Уведомление отправлено');
+        const sendData = await sendRes.json();
+        console.log('📨 sendMessage ответ:', JSON.stringify(sendData));
 
       // ---- Кнопка "История" ----
-      // Показывает последние 5 сообщений диалога
       } else if (action === 'history') {
         // Читаем историю из Firebase
         const historyRef = db.ref(`chats/${clientId}/${sessionId}`);
         const snap = await historyRef.once('value');
         const val = snap.val();
         const history = Array.isArray(val) ? val : [];
-        const last5 = history.slice(-5); // Берём только последние 5
+        const last5 = history.slice(-5);
 
         let historyText = `📜 Последние сообщения [${clientId}]:\n\n`;
         last5.forEach(msg => {
@@ -147,7 +150,7 @@ module.exports = async (req, res) => {
           })
         });
 
-        await fetch(`https://api.telegram.org/bot${tgToken}/sendMessage`, {
+        const sendRes = await fetch(`https://api.telegram.org/bot${tgToken}/sendMessage`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -155,9 +158,10 @@ module.exports = async (req, res) => {
             text: historyText
           })
         });
+        const sendData = await sendRes.json();
+        console.log('📨 История отправлена:', JSON.stringify(sendData));
 
       // ---- Кнопка "Статус" ----
-      // Показывает текущий статус во всплывающем окне
       } else if (action === 'status') {
         const snap = await aiEnabledRef.once('value');
         const aiEnabled = snap.val() !== false;
@@ -177,21 +181,21 @@ module.exports = async (req, res) => {
 
     // ====================================================
     // БЛОК 2: Обработка ответов менеджера юзеру
-    // Срабатывает когда менеджер делает Reply на сообщение юзера
+    // Срабатывает когда менеджер делает Reply на сообщение
     // ====================================================
     if (!message || !message.text) return res.status(200).end();
 
     // Игнорируем сообщения от ботов
     if (message.from && message.from.is_bot) return res.status(200).end();
 
-    // Только Reply сообщения — не обычные сообщения в чат
+    // Только Reply — не обычные сообщения
     if (!message.reply_to_message) return res.status(200).end();
 
     const originalText = message.reply_to_message.text || '';
 
-    // Извлекаем clientId из текста — формат: [mina_001]
+    // Извлекаем clientId — формат: [mina_001]
     const clientIdMatch = originalText.match(/\[(.+?)\]/);
-    // Извлекаем sessionId из текста — формат: session: user_xxx
+    // Извлекаем sessionId — формат: session: user_xxx
     const sessionIdMatch = originalText.match(/session: ([^\s\n\r]+)/);
 
     if (!clientIdMatch || !sessionIdMatch) {
@@ -201,32 +205,33 @@ module.exports = async (req, res) => {
 
     const clientId = clientIdMatch[1];
     const sessionId = sessionIdMatch[1];
-    const managerText = message.text; // Текст ответа менеджера
+    const managerText = message.text;
     const tgToken = process.env.TG_BOT_TOKEN;
     const chatId = message.chat.id;
 
+    console.log('👨‍💼 Менеджер отвечает:', clientId, sessionId);
+
     const db = admin.database();
 
-    // Читаем историю юзера из Firebase
+    // Читаем историю из Firebase
     const historyRef = db.ref(`chats/${clientId}/${sessionId}`);
     const snapshot = await historyRef.once('value');
     const val = snapshot.val();
     const historyArray = Array.isArray(val) ? val : [];
 
-    // Добавляем ответ менеджера в историю
-    // fromManager: true — чтобы виджет показал его синим цветом
+    // Добавляем ответ менеджера
+    // fromManager: true — виджет покажет синим цветом
     historyArray.push({
       role: 'assistant',
       content: managerText,
       fromManager: true
     });
 
-    // Сохраняем обновлённую историю в Firebase
-    // Виджет автоматически увидит новое сообщение и покажет юзеру
+    // Сохраняем в Firebase — виджет автоматически увидит
     await historyRef.set(historyArray);
     console.log('✅ Ответ менеджера сохранён в Firebase');
 
-    // Подтверждаем менеджеру что сообщение отправлено
+    // Подтверждаем менеджеру
     await fetch(`https://api.telegram.org/bot${tgToken}/sendMessage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
