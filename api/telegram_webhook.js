@@ -20,6 +20,8 @@ module.exports = async (req, res) => {
     if (callback_query) {
       const data = callback_query.data;
       const chatId = callback_query.message.chat.id;
+      const messageId = callback_query.message.message_id;
+      const originalText = callback_query.message.text || '';
       const tgToken = process.env.TG_BOT_TOKEN;
       const db = admin.database();
 
@@ -47,12 +49,18 @@ module.exports = async (req, res) => {
           })
         });
 
-        await fetch(`https://api.telegram.org/bot${tgToken}/sendMessage`, {
+        // Обновляем текст сообщения — меняем статус
+        const newText = originalText
+          .replace('🟢 ИИ активен', '🔴 Менеджер отвечает')
+          .replace('🟢 ИИ сейчас отвечает', '🔴 Менеджер отвечает');
+
+        await fetch(`https://api.telegram.org/bot${tgToken}/editMessageText`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             chat_id: chatId,
-            text: `🔴 [${clientId}] ИИ выключен\nМенеджер отвечает вручную`,
+            message_id: messageId,
+            text: newText,
             reply_markup: {
               inline_keyboard: [[
                 { text: '🟢 Включить ИИ', callback_data: `on|${clientId}|${sessionId}` },
@@ -76,12 +84,18 @@ module.exports = async (req, res) => {
           })
         });
 
-        await fetch(`https://api.telegram.org/bot${tgToken}/sendMessage`, {
+        // Обновляем текст сообщения — меняем статус
+        const newText = originalText
+          .replace('🔴 Менеджер отвечает', '🟢 ИИ активен')
+          .replace('🔴 Менеджер сейчас отвечает', '🟢 ИИ активен');
+
+        await fetch(`https://api.telegram.org/bot${tgToken}/editMessageText`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             chat_id: chatId,
-            text: `🟢 [${clientId}] ИИ включён\nБот отвечает автоматически`,
+            message_id: messageId,
+            text: newText,
             reply_markup: {
               inline_keyboard: [[
                 { text: '🟢 ИИ активен', callback_data: `status|${clientId}|${sessionId}` },
