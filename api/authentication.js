@@ -199,7 +199,7 @@ module.exports = async (req, res) => {
     }
 
     // ============================================================
-    // ШАГ 7: Отправить сообщение юзера в Telegram менеджеру
+    // ШАГ 7: Отправить ПОЛНЫЙ ДИАЛОГ в Telegram менеджеру
     // ============================================================
     
     const lastMsg = messages[messages.length - 1];
@@ -207,11 +207,25 @@ module.exports = async (req, res) => {
 
     if (tgToken && tgChatId && userText) {
       try {
-        console.log('📤 Отправляем в Telegram...');
+        console.log('📤 Отправляем ПОЛНЫЙ ДИАЛОГ в Telegram...');
 
+        // ✅ Форматируем ВСЮ историю диалога
+        let dialogText = '';
+        messages.forEach(msg => {
+          if (msg.role === 'user') {
+            dialogText += `👤 Юзер: ${msg.content}\n`;
+          } else if (msg.role === 'assistant') {
+            dialogText += `🤖 Амина: ${msg.content}\n`;
+          }
+        });
+
+        // ✅ Определяем статус ИИ
         const statusText = aiEnabled ? '🟢 ИИ активен' : '🔴 Менеджер отвечает';
-        const tgText = `💬 Диалог #${dialogNum} [${clientId}]\n👤 Юзер: ${userText}\n\n${statusText}\nsession: ${sessionId}`;
+        
+        // ✅ Собираем сообщение с ПОЛНОЙ историей
+        const tgText = `💬 Диалог #${dialogNum} [${clientId}]\n\n${dialogText}\n${statusText}\nsession: ${sessionId}`;
 
+        // ✅ Создаём кнопки для управления ИИ
         const keyboard = aiEnabled ? [[
           { text: '🔴 Выключить ИИ', callback_data: `off|${clientId}|${sessionId}` },
           { text: '📜 История', callback_data: `history|${clientId}|${sessionId}` }
@@ -234,7 +248,7 @@ module.exports = async (req, res) => {
           body: JSON.stringify(msgBody)
         });
 
-        console.log('✅ Сообщение в Telegram отправлено');
+        console.log('✅ ПОЛНЫЙ ДИАЛОГ отправлен в Telegram');
 
       } catch (e) {
         console.error('❌ Ошибка Telegram:', e.message);
