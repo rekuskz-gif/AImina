@@ -251,7 +251,7 @@ module.exports = async (req, res) => {
       // НОВОЕ: Отправляем отдельное сообщение что ИИ ВЫКЛЮЧЕН
       if (tgToken && tgChatId) {
         try {
-          const warningText = `⚠️ ВАЖНО! ИИ ВЫК.\n\n💬 Диалог #${dialogNum} [${clientId}]\n👤 Посититель пишет: ${userText}\n\n🔴 Отвечай через Reply!\nsession: ${sessionId}`;
+          const warningText = `🔴 ИИ ВЫК.\n\n💬 Диалог #${dialogNum} [${clientId}]\n👤 Посититель пишет: ${userText}\n\n Отвечай через Reply!\nsession: ${sessionId}`;
 
           const warningBody = {
             chat_id: tgChatId,
