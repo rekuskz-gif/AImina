@@ -331,28 +331,34 @@ module.exports = async (req, res) => {
     const botText = claudeData.content[0].text;
     console.log('✅ Claude ответил');
 
-    // ============================================================
+// ============================================================
     // ШАГ 12: Подсчитать и вычесть токены
     // v2.3 - fix cache
     // ============================================================
     
+    // ✅ Убедимся что всё это числа (преобразуем строки в числа)
+    const tokenBalanceNum = parseFloat(tokenBalance) || 0;
+    const tokenTariffNum = parseFloat(tokenTariff) || 0;
+    const tokenSpentNum = parseFloat(tokenSpent) || 0;
+    
     console.log('💰 Подсчитываем потраченные токены...');
+    console.log(`💰 Токены (преобразованы): баланс=${tokenBalanceNum}, тариф=${tokenTariffNum}, потрачено=${tokenSpentNum}`);
     
     // ✅ Считаем символы в ответе ИИ
     const responseChars = botText.length;
     console.log(`📝 Символов в ответе ИИ: ${responseChars}`);
     
     // ✅ Считаем стоимость ответа
-    const costResponse = responseChars * tokenTariff;
-    console.log(`💸 Стоимость ответа: ${responseChars} символов × ${tokenTariff} = ${costResponse.toFixed(4)} токенов`);
+    const costResponse = responseChars * tokenTariffNum;
+    console.log(`💸 Стоимость ответа: ${responseChars} символов × ${tokenTariffNum} = ${costResponse.toFixed(4)} токенов`);
     
     // ✅ Новый счётчик потрачено
-    const newSpent = tokenSpent + costResponse;
-    console.log(`📊 Новый счётчик: ${tokenSpent} + ${costResponse.toFixed(4)} = ${newSpent.toFixed(4)} токенов`);
+    const newSpent = tokenSpentNum + costResponse;
+    console.log(`📊 Новый счётчик: ${tokenSpentNum} + ${costResponse.toFixed(4)} = ${newSpent.toFixed(4)} токенов`);
     
     // ✅ Проверяем остаток
-    const newRemaining = tokenBalance - newSpent;
-    console.log(`💰 Остаток после ответа: ${tokenBalance} - ${newSpent.toFixed(4)} = ${newRemaining.toFixed(4)} токенов`);
+    const newRemaining = tokenBalanceNum - newSpent;
+    console.log(`💰 Остаток после ответа: ${tokenBalanceNum} - ${newSpent.toFixed(4)} = ${newRemaining.toFixed(4)} токенов`);
     
     if (newRemaining < 0) {
       console.warn(`⚠️ ВНИМАНИЕ: Остаток стал отрицательным! ${newRemaining.toFixed(4)}`);
@@ -374,6 +380,58 @@ module.exports = async (req, res) => {
     }
     
     console.log(`✅ Подсчёт токенов завершён. Новый остаток: ${newRemaining.toFixed(4)}`);
+
+    // ============================================================
+    // ШАГ 13: Отправить ответ ИИ в Telegram
+    // ============================================================
+    
+    if (tgToken && tgChatId) {
+      try {
+        const replyBody = {
+          chat_id: tgChatId,
+          text: `🤖 ИИ ответил:\n${botText}`,
+        };
+
+        if (threadId) replyBody.message_thread_id = threadId;
+
+        await fetch(`https://api.telegram.org/bot${tgToken}/sendMessage`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(replyBody)
+        });
+
+        console.log('✅ Ответ ИИ отправлен в Telegram');
+
+      } catch (e) {
+        console.error('❌ Ошибка отправки ответа в Telegram:', e.message);
+      }
+    }
+
+    // ============================================================
+    // ШАГ 14: Вернуть ответ виджету и закрыть функцию
+    // ============================================================
+    
+    console.log('📤 Возвращаем ответ виджету...');
+    
+    return res.status(200).json({
+      text: botText,
+      aiDisabled: false,
+      avatarUrl: avatarUrl || null,
+      tokenInfo: {
+        spent: newSpent.toFixed(4),
+        remaining: newRemaining.toFixed(4),
+        balance: tokenBalanceNum
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Auth Error:', error.message);
+    return res.status(500).json({
+      error: "Ошибка сервера",
+      message: error.message
+    });
+  }
+};
 
     // ============================================================
     // ШАГ 13: Отправить ответ ИИ в Telegram
