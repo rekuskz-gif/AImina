@@ -775,11 +775,12 @@
                     const result = await res.json();
 
                     // ✅ ИСПРАВЛЕНИЕ: Сообщение когда ИИ выключен
-                    if (result.aiDisabled) {
-                        console.log('⏸️ ИИ выключен — менеджер отвечает');
-                        addMsg('🔴 Менеджер ответит вам в ближайшее время...', 'bot');
-                        return;
-                    }
+if (result.aiDisabled) {
+    console.log('⏸️ ИИ выключен — менеджер отвечает');
+    // ❌ НЕ показываем сообщение на сайте!
+    // addMsg('🔴 Менеджер ответит вам в ближайшее время...', 'bot');
+    return;
+}
 
                     if (!res.ok) throw new Error(result.error || 'API error');
                     if (!result.text) return;
