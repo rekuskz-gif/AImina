@@ -20,8 +20,6 @@ module.exports = async (req, res) => {
     if (callback_query) {
       const data = callback_query.data;
       const chatId = callback_query.message.chat.id;
-      const messageId = callback_query.message.message_id;
-      const originalText = callback_query.message.text || '';
       const tgToken = process.env.TG_BOT_TOKEN;
       const db = admin.database();
 
@@ -49,18 +47,13 @@ module.exports = async (req, res) => {
           })
         });
 
-        // Обновляем текст сообщения — меняем статус
-        const newText = originalText
-          .replace('🟢 ИИ активен', '🔴 Менеджер отвечает')
-          .replace('🟢 ИИ сейчас отвечает', '🔴 Менеджер отвечает');
-
-        await fetch(`https://api.telegram.org/bot${tgToken}/editMessageText`, {
+        // Новое короткое сообщение со статусом
+        await fetch(`https://api.telegram.org/bot${tgToken}/sendMessage`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             chat_id: chatId,
-            message_id: messageId,
-            text: newText,
+            text: `🔴 Статус [${clientId}]: Менеджер отвечает вручную`,
             reply_markup: {
               inline_keyboard: [[
                 { text: '🟢 Включить ИИ', callback_data: `on|${clientId}|${sessionId}` },
@@ -84,18 +77,13 @@ module.exports = async (req, res) => {
           })
         });
 
-        // Обновляем текст сообщения — меняем статус
-        const newText = originalText
-          .replace('🔴 Менеджер отвечает', '🟢 ИИ активен')
-          .replace('🔴 Менеджер сейчас отвечает', '🟢 ИИ активен');
-
-        await fetch(`https://api.telegram.org/bot${tgToken}/editMessageText`, {
+        // Новое короткое сообщение со статусом
+        await fetch(`https://api.telegram.org/bot${tgToken}/sendMessage`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             chat_id: chatId,
-            message_id: messageId,
-            text: newText,
+            text: `🟢 Статус [${clientId}]: ИИ отвечает автоматически`,
             reply_markup: {
               inline_keyboard: [[
                 { text: '🟢 ИИ активен', callback_data: `status|${clientId}|${sessionId}` },
@@ -155,9 +143,6 @@ module.exports = async (req, res) => {
             text: aiEnabled ? '🟢 ИИ сейчас активен' : '🔴 Менеджер сейчас отвечает'
           })
         });
-
-      } else {
-        console.log('❌ Неизвестное действие:', action);
       }
 
       return res.status(200).json({ ok: true });
@@ -173,9 +158,6 @@ module.exports = async (req, res) => {
 
     const clientIdMatch = originalText.match(/\[(.+?)\]/);
     const sessionIdMatch = originalText.match(/session: ([^\s\n\r]+)/);
-
-    console.log('🔍 clientId:', clientIdMatch?.[1]);
-    console.log('🔍 sessionId:', sessionIdMatch?.[1]);
 
     if (!clientIdMatch || !sessionIdMatch) {
       console.log('❌ Не найден clientId или sessionId');
