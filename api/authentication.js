@@ -276,7 +276,7 @@ module.exports = async (req, res) => {
           });
           
           // ✅ Создаём сообщение с ПОЛНОЙ историей
-          const warningText = `🔴 ИИ ВЫК.\n\n💬 Диалог #${dialogNum} [${clientId}]\n\n${dialogText}\nОтвечай через Reply!\nsession: ${sessionId}`;
+          const warningText = `ИИ вык.\n\n💬 Диалог #${dialogNum} [${clientId}]\n\n${dialogText}\n🔴 ИИ ВЫК. Отвечай через Reply!\nsession: ${sessionId}`;
 
           const warningBody = {
             chat_id: tgChatId,
