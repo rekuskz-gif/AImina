@@ -244,14 +244,25 @@ module.exports = async (req, res) => {
     // ============================================================
     // ШАГ 8: Если ИИ выключен - отправляем WARNING в Telegram
     // ============================================================
+
     
     if (!aiEnabled) {
-      console.log('⏸️ ИИ выключен, отправляем WARNING менеджеру');
+      console.log('⏸️ ИИ выключен, отправляем ВЕСЬ ДИАЛОГ менеджеру');
       
-      // НОВОЕ: Отправляем отдельное сообщение что ИИ ВЫКЛЮЧЕН
       if (tgToken && tgChatId) {
         try {
-          const warningText = `🔴 ИИ ВЫК.\n\n💬 Диалог #${dialogNum} [${clientId}]\n👤 Посититель пишет: ${userText}\n\n Отвечай через Reply!\nsession: ${sessionId}`;
+          // ✅ Форматируем ВСЕ сообщения из истории
+          let dialogText = '';
+          messages.forEach(msg => {
+            if (msg.role === 'user') {
+              dialogText += `👤 Юзер: ${msg.content}\n`;
+            } else if (msg.role === 'assistant') {
+              dialogText += `🤖 Амина: ${msg.content}\n`;
+            }
+          });
+          
+          // ✅ Создаём сообщение с ПОЛНОЙ историей
+          const warningText = `🔴 ИИ ВЫК.\n\n💬 Диалог #${dialogNum} [${clientId}]\n\n${dialogText}\nОтвечай через Reply!\nsession: ${sessionId}`;
 
           const warningBody = {
             chat_id: tgChatId,
@@ -266,20 +277,21 @@ module.exports = async (req, res) => {
             body: JSON.stringify(warningBody)
           });
 
-          console.log('✅ WARNING об отключении ИИ отправлен в Telegram');
+          console.log('✅ ВЕСЬ ДИАЛОГ отправлен в Telegram');
 
         } catch (e) {
-          console.error('❌ Ошибка отправки WARNING:', e.message);
+          console.error('❌ Ошибка отправки диалога:', e.message);
         }
       }
       
       // Возвращаем пусто - виджет будет ждать Reply менеджера
       return res.status(200).json({
-        text: null,           // ← ПУСТО!
+        text: null,
         aiDisabled: true,
         avatarUrl: avatarUrl
       });
     }
+
 
     // ============================================================
     // ШАГ 9: Если ИИ включён - читаем промпт из Google Doc
