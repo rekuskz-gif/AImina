@@ -420,58 +420,6 @@ module.exports = async (req, res) => {
       tokenInfo: {
         spent: newSpent.toFixed(4),
         remaining: newRemaining.toFixed(4),
-        balance: tokenBalanceNum
-      }
-    });
-
-  } catch (error) {
-    console.error('❌ Auth Error:', error.message);
-    return res.status(500).json({
-      error: "Ошибка сервера",
-      message: error.message
-    });
-  }
-};
-
-    // ============================================================
-    // ШАГ 13: Отправить ответ ИИ в Telegram
-    // ============================================================
-    
-    if (tgToken && tgChatId) {
-      try {
-        const replyBody = {
-          chat_id: tgChatId,
-          text: `🤖 ИИ ответил:\n${botText}`,
-        };
-
-        if (threadId) replyBody.message_thread_id = threadId;
-
-        await fetch(`https://api.telegram.org/bot${tgToken}/sendMessage`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(replyBody)
-        });
-
-        console.log('✅ Ответ ИИ отправлен в Telegram');
-
-      } catch (e) {
-        console.error('❌ Ошибка отправки ответа в Telegram:', e.message);
-      }
-    }
-
-    // ============================================================
-    // ШАГ 14: Вернуть ответ виджету и закрыть функцию
-    // ============================================================
-    
-    console.log('📤 Возвращаем ответ виджету...');
-    
-    return res.status(200).json({
-      text: botText,
-      aiDisabled: false,
-      avatarUrl: avatarUrl || null,
-      tokenInfo: {
-        spent: newSpent.toFixed(4),
-        remaining: newRemaining.toFixed(4),
         balance: tokenBalance
       }
     });
