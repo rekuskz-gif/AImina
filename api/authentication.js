@@ -349,7 +349,7 @@ module.exports = async (req, res) => {
     const newSpent = tokenSpent + costResponse;
     console.log(`📊 Новый счётчик: ${tokenSpent} + ${costResponse.toFixed(4)} = ${newSpent.toFixed(4)} токенов`);
     
-    // ✅ Проверяем что не превышаем баланс
+    // ✅ Проверяем остаток
     const newRemaining = tokenBalance - newSpent;
     console.log(`💰 Остаток после ответа: ${tokenBalance} - ${newSpent.toFixed(4)} = ${newRemaining.toFixed(4)} токенов`);
     
@@ -358,20 +358,21 @@ module.exports = async (req, res) => {
     }
     
     try {
-      // ✅ ПИШЕМ новый счётчик в Google Sheet колонку L
-      // ✅ ИСПРАВЛЕНИЕ: прямое присваивание значения БЕЗ методов
+      // ✅ ПИШЕМ новый счётчик в Google Sheet колонку L (11)
+      // ✅ Прямое присваивание значения
       sheet.getCell(foundRow, 11).value = newSpent.toFixed(4);
-      console.log(`✅ Обновили колонку L (потрачено = ${newSpent.toFixed(4)})`);
+      console.log(`✅ Установили значение в колонку L: ${newSpent.toFixed(4)}`);
       
-      // ✅ СОХРАНЯЕМ изменения в Google Sheet
+      // ✅ СОХРАНЯЕМ все изменения в Google Sheet
       await sheet.saveUpdatedCells();
       console.log('✅ Изменения сохранены в Google Sheet');
       
     } catch (e) {
       console.error('❌ Ошибка при записи токенов в Sheet:', e.message);
+      console.error('❌ Stack trace:', e.stack);
     }
     
-    console.log(`✅ Успешно! Токены вычтены. Остаток: ${newRemaining.toFixed(4)}`);
+    console.log(`✅ Подсчёт токенов завершён. Новый остаток: ${newRemaining.toFixed(4)}`);
 
     // ============================================================
     // ШАГ 13: Отправить ответ ИИ в Telegram
