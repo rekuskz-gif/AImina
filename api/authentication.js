@@ -1,10 +1,33 @@
 // ============================================================
 // ФАЙЛ: api/authentication.js
-// НАЗНАЧЕНИЕ: Главный API — обрабатывает сообщения юзера
-// 1. Читает конфиг клиента из Google Sheets
-// 2. Отправляет в Telegram (если включено)
-// 3. Генерирует ответ через Claude AI
-// 4. Возвращает ответ виджету
+// 
+// НАЗНАЧЕНИЕ: Главный API обработки сообщений юзера
+// 
+// ЧТО ДЕЛАЕТ:
+// 1. Получает сообщение от widget.js
+// 2. Загружает конфиг клиента из Google Sheet
+// 3. Отправляет сообщение юзера в Telegram менеджеру
+// 4. Проверяет: ИИ включён или менеджер отвечает?
+// 5. Если ИИ включён: отправляет в Claude, возвращает ответ
+// 6. Если ИИ выключен: отправляет WARNING сообщение в Telegram
+// 7. Сохраняет всё в Firebase
+// 
+// ПОЛУЧАЕТ от widget.js:
+// {
+//   "clientId": "mina_001",
+//   "sessionId": "user_abc123_1609459200000",
+//   "messages": [
+//     { "role": "user", "content": "Привет!" },
+//     ...
+//   ]
+// }
+// 
+// ОТПРАВЛЯЕТ widget.js:
+// {
+//   "text": "Привет! Чем помочь?",  (или null если ИИ выключен)
+//   "aiDisabled": false,
+//   "avatarUrl": "https://..."
+// }
 // ============================================================
 
 const { GoogleSpreadsheet } = require('google-spreadsheet');
@@ -13,10 +36,9 @@ const { google } = require('googleapis');
 const admin = require('firebase-admin');
 
 // ============================================================
-// БЛОК 1: Инициализация Firebase Admin SDK
-// НАЗНАЧЕНИЕ: Подключаемся к Firebase для чтения/записи истории
-// и управления статусом ИИ (включён/выключен)
+// ИНИЦИАЛИЗАЦИЯ: Firebase Admin SDK
 // ============================================================
+
 if (!admin.apps.length) {
   admin.initializeApp({
     credential: admin.credential.cert({
@@ -30,9 +52,9 @@ if (!admin.apps.length) {
 
 module.exports = async (req, res) => {
   // ============================================================
-  // БЛОК 2: CORS заголовки
-  // НАЗНАЧЕНИЕ: Разрешить запросы с любых сайтов
+  // ШАГ 1: CORS заголовки
   // ============================================================
+  
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, GET, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -41,22 +63,26 @@ module.exports = async (req, res) => {
 
   try {
     // ============================================================
-    // БЛОК 3: Получаем данные от виджета
-    // clientId — ID клиента (например mina_001)
-    // sessionId — уникальный ID браузера юзера
-    // messages — история переписки
+    // ШАГ 2: Получить данные от widget
     // ============================================================
+    
     const { clientId, sessionId, messages } = req.body;
-    console.log('🔵 clientId:', clientId, 'sessionId:', sessionId);
+    
+    console.log(`🔵 Запрос от ${clientId} | session: ${sessionId}`);
 
     if (!clientId || !messages) {
-      return res.status(400).json({ error: "clientId и messages обязательны" });
+      return res.status(400).json({ 
+        error: "clientId и messages обязательны",
+        received: { clientId, messages: messages ? 'OK' : 'missing' }
+      });
     }
 
     // ============================================================
-    // БЛОК 4: Авторизация в Google Cloud
-    // НАЗНАЧЕНИЕ: Подключаемся к Google Sheets и Google Docs
+    // ШАГ 3: Загрузить конфиг клиента из Google Sheet
     // ============================================================
+    
+    console.log('📊 Читаем Google Sheet...');
+
     const auth = new JWT({
       email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
       key: process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, '\n'),
@@ -66,79 +92,69 @@ module.exports = async (req, res) => {
       ],
     });
 
-    // ============================================================
-    // БЛОК 5: Загружаем конфиг клиента из Google Sheets
-    // ============================================================
     const doc = new GoogleSpreadsheet(process.env.GOOGLE_SHEET_ID, auth);
     await doc.loadInfo();
+    
     const sheet = doc.sheetsByTitle['Authentication'];
+    if (!sheet) {
+      return res.status(500).json({ error: "Таблица повреждена" });
+    }
+
     await sheet.loadCells();
 
-    console.log('📊 Читаем таблицу...');
-
-    // Строка 2 (индекс 1) — значения по умолчанию
+    // Найти строку клиента
     const defaultRow = 1;
     let foundRow = null;
 
-    // Ищем строку клиента по clientId в колонке A
     for (let i = 0; i < sheet.rowCount; i++) {
-      const val = sheet.getCell(i, 0).value;
-      if (val === clientId) {
+      if (sheet.getCell(i, 0).value === clientId) {
         foundRow = i;
         break;
       }
     }
 
     if (foundRow === null) {
-      return res.status(404).json({ error: "Клиент не найден в таблице" });
+      return res.status(404).json({ error: `Клиент ${clientId} не найден` });
     }
+
+    const get = (col) => sheet.getCell(foundRow, col).value || sheet.getCell(defaultRow, col).value;
+
+    // === Прочитать данные клиента ===
+    // A(0)=clientId B(1) C(2) D(3)=googleDocId E(4)=claudeKey
+    // F(5)=tgToken G(6)=tgChatId H(7)=status I(8)=avatarUrl
+    const status = get(7);           // Статус (active/inactive)
+    const claudeKey = get(4);        // API ключ Claude
+    const googleDocId = get(3);      // Google Doc с промптом
+    const tgToken = get(5);          // Telegram токен
+    const tgChatId = get(6);         // Telegram группа ID
+    const avatarUrl = get(8);        // Аватарка
 
     console.log(`✅ Клиент найден в строке ${foundRow}`);
 
-    // Если поле пустое — берём из строки по умолчанию
-    const get = (col) => sheet.getCell(foundRow, col).value || sheet.getCell(defaultRow, col).value;
-
-    // ============================================================
-    // БЛОК 6: Читаем данные клиента
-    // A(0)=clientId B(1) C(2) D(3)=googleDocId E(4)=claudeKey
-    // F(5)=tgToken G(6)=tgChatId H(7)=status I(8)=avatarUrl
-    // ============================================================
-    const status      = get(7); // H — статус (active/inactive)
-    const claudeKey   = get(4); // E — API ключ Claude
-    const googleDocId = get(3); // D — ID Google Doc с промптом
-    const avatarUrl   = get(8); // I — ссылка на аватарку
-    const tgToken     = get(5); // F — токен Telegram бота
-    const tgChatId    = get(6); // G — ID Telegram группы
-
-    console.log('📋 Данные клиента загружены');
-
-    // ============================================================
-    // БЛОК 7: Проверяем что клиент активен
-    // ============================================================
+    // === Проверка обязательных данных ===
     if (status !== 'active') {
-      console.log('❌ Клиент не активен');
-      return res.status(403).json({ error: "Агент не активен" });
+      return res.status(403).json({ error: "Агент отключен" });
     }
 
     if (!claudeKey) {
-      console.log('❌ API ключ Claude не найден');
-      return res.status(500).json({ error: "API ключ не найден" });
+      return res.status(500).json({ error: "API ключ Claude не найден" });
     }
 
     // ============================================================
-    // БЛОК 8: Получаем статус ИИ из Firebase
-    // По умолчанию ИИ включён (true)
+    // ШАГ 4: Получить статус ИИ из Firebase
     // ============================================================
+    
     const db = admin.database();
     const aiEnabledRef = db.ref(`settings/${clientId}/${sessionId}/aiEnabled`);
     const aiEnabledSnap = await aiEnabledRef.once('value');
-    const aiEnabled = aiEnabledSnap.val() !== false;
-    console.log('🤖 aiEnabled:', aiEnabled);
+    const aiEnabled = aiEnabledSnap.val() !== false;  // По умолчанию TRUE
+
+    console.log(`🤖 ИИ включён: ${aiEnabled}`);
 
     // ============================================================
-    // БЛОК 9: Получаем номер диалога
-    // НАЗНАЧЕНИЕ: Каждому диалогу даём уникальный номер
+    // ШАГ 5: Создать уникальный номер диалога
     // ============================================================
+    
     const dialogNumRef = db.ref(`settings/${clientId}/${sessionId}/dialogNum`);
     const dialogNumSnap = await dialogNumRef.once('value');
     let dialogNum = dialogNumSnap.val();
@@ -149,20 +165,20 @@ module.exports = async (req, res) => {
       const all = allSnap.val() || {};
       dialogNum = Object.keys(all).length;
       await dialogNumRef.set(dialogNum);
-      console.log('🔢 Создан диалог №' + dialogNum);
+      console.log(`🔢 Диалог №${dialogNum}`);
     }
 
     // ============================================================
-    // БЛОК 10: Создаём или получаем тему в Telegram
-    // НАЗНАЧЕНИЕ: Каждый юзер имеет свою тему в группе
+    // ШАГ 6: Создать тему в Telegram (если нужна)
     // ============================================================
+    
     const threadIdRef = db.ref(`settings/${clientId}/${sessionId}/threadId`);
     const threadIdSnap = await threadIdRef.once('value');
     let threadId = threadIdSnap.val();
 
     if (!threadId && tgToken && tgChatId) {
       try {
-        console.log('📱 Создаём новую тему в Telegram...');
+        console.log('📱 Создаём тему в Telegram...');
         const topicRes = await fetch(`https://api.telegram.org/bot${tgToken}/createForumTopic`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -175,32 +191,25 @@ module.exports = async (req, res) => {
         if (topicData.ok) {
           threadId = topicData.result.message_thread_id;
           await threadIdRef.set(threadId);
-          console.log('✅ Создана тема:', threadId);
-        } else {
-          console.error('❌ Ошибка создания темы:', JSON.stringify(topicData));
-          threadId = null; // Без темы — General
+          console.log(`✅ Тема создана: ${threadId}`);
         }
       } catch (e) {
         console.error('❌ Ошибка создания темы:', e.message);
-        threadId = null;
       }
     }
 
-    console.log('💬 threadId:', threadId);
-
     // ============================================================
-    // БЛОК 11: Отправляем сообщение юзера в Telegram
-    // ВАЖНО: В тексте ОБЯЗАТЕЛЬНО должен быть [clientId] и session:
-    // Это нужно чтобы менеджер мог сделать Reply и ответить юзеру
+    // ШАГ 7: Отправить сообщение юзера в Telegram менеджеру
     // ============================================================
-    const lastMessage = messages[messages.length - 1];
-    const userText = lastMessage && lastMessage.role === 'user' ? lastMessage.content : null;
+    
+    const lastMsg = messages[messages.length - 1];
+    const userText = lastMsg && lastMsg.role === 'user' ? lastMsg.content : null;
 
     if (tgToken && tgChatId && userText) {
       try {
-        const statusText = aiEnabled ? '🟢 ИИ активен' : '🔴 Менеджер отвечает';
+        console.log('📤 Отправляем в Telegram...');
 
-        // ВАЖНО: [${clientId}] и session: нужны для парсинга Reply!
+        const statusText = aiEnabled ? '🟢 ИИ активен' : '🔴 Менеджер отвечает';
         const tgText = `💬 Диалог #${dialogNum} [${clientId}]\n👤 Юзер: ${userText}\n\n${statusText}\nsession: ${sessionId}`;
 
         const keyboard = aiEnabled ? [[
@@ -211,14 +220,12 @@ module.exports = async (req, res) => {
           { text: '📜 История', callback_data: `history|${clientId}|${sessionId}` }
         ]];
 
-        // Собираем тело запроса
         const msgBody = {
           chat_id: tgChatId,
           text: tgText,
           reply_markup: { inline_keyboard: keyboard }
         };
 
-        // Добавляем threadId только если есть тема
         if (threadId) msgBody.message_thread_id = threadId;
 
         await fetch(`https://api.telegram.org/bot${tgToken}/sendMessage`, {
@@ -226,36 +233,66 @@ module.exports = async (req, res) => {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(msgBody)
         });
-        console.log('✅ Сообщение отправлено в Telegram');
+
+        console.log('✅ Сообщение в Telegram отправлено');
+
       } catch (e) {
-        console.error('❌ Ошибка отправки в Telegram:', e.message);
+        console.error('❌ Ошибка Telegram:', e.message);
       }
     }
 
     // ============================================================
-    // БЛОК 12: Если ИИ выключен — не отвечаем
-    // Менеджер ответит вручную через Telegram Reply
+    // ШАГ 8: Если ИИ выключен - отправляем WARNING в Telegram
     // ============================================================
+    
     if (!aiEnabled) {
-      console.log('⏸️ ИИ выключен — менеджер отвечает вручную');
+      console.log('⏸️ ИИ выключен, отправляем WARNING менеджеру');
+      
+      // НОВОЕ: Отправляем отдельное сообщение что ИИ ВЫКЛЮЧЕН
+      if (tgToken && tgChatId) {
+        try {
+          const warningText = `⚠️ ВАЖНО! ИИ ВЫКЛЮЧЕН!\n\n💬 Диалог #${dialogNum} [${clientId}]\n👤 Юзер: ${userText}\n\n🔴 ИИ ВЫКЛЮЧЕН - Отвечай сам через Reply!\nsession: ${sessionId}`;
+
+          const warningBody = {
+            chat_id: tgChatId,
+            text: warningText,
+          };
+
+          if (threadId) warningBody.message_thread_id = threadId;
+
+          await fetch(`https://api.telegram.org/bot${tgToken}/sendMessage`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(warningBody)
+          });
+
+          console.log('✅ WARNING об отключении ИИ отправлен в Telegram');
+
+        } catch (e) {
+          console.error('❌ Ошибка отправки WARNING:', e.message);
+        }
+      }
+      
+      // Возвращаем пусто - виджет будет ждать Reply менеджера
       return res.status(200).json({
-        text: null,
+        text: null,           // ← ПУСТО!
         aiDisabled: true,
         avatarUrl: avatarUrl
       });
     }
 
     // ============================================================
-    // БЛОК 13: Читаем промпт из Google Doc
-    // НАЗНАЧЕНИЕ: Инструкции для Claude как себя вести
+    // ШАГ 9: Если ИИ включён - читаем промпт из Google Doc
     // ============================================================
-    let systemPrompt = "Ты полезный ИИ ассистент";
+    
+    let systemPrompt = "Ты полезный помощник";
 
     if (googleDocId) {
       try {
-        console.log('📄 Загружаем промпт из Google Doc...');
+        console.log('📄 Читаем промпт из Google Doc...');
         const docsClient = google.docs({ version: 'v1', auth });
         const docRes = await docsClient.documents.get({ documentId: googleDocId });
+        
         systemPrompt = docRes.data.body.content
           .filter(block => block.paragraph)
           .map(block => block.paragraph.elements
@@ -263,27 +300,31 @@ module.exports = async (req, res) => {
             .join(''))
           .join('')
           .trim();
-        console.log('✅ Промпт загружен, длина:', systemPrompt.length);
+
+        console.log(`✅ Промпт загружен (${systemPrompt.length} символов)`);
+
       } catch (e) {
-        console.error('❌ Ошибка чтения промпта:', e.message);
+        console.error('❌ Ошибка промпта:', e.message);
       }
     }
 
     // ============================================================
-    // БЛОК 14: Очищаем историю перед отправкой в Claude
-    // Claude принимает только role и content — убираем fromManager
+    // ШАГ 10: Очистить историю для Claude
+    // Claude принимает только role и content
     // ============================================================
+    
     const cleanMessages = messages.map(msg => ({
       role: msg.role,
       content: msg.content
     }));
 
     // ============================================================
-    // БЛОК 15: Отправляем запрос в Claude AI
+    // ШАГ 11: Отправить в Claude AI
     // ============================================================
+    
     console.log('🚀 Отправляем в Claude...');
 
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
+    const claudeResponse = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
         'x-api-key': claudeKey,
@@ -291,29 +332,30 @@ module.exports = async (req, res) => {
         'content-type': 'application/json'
       },
       body: JSON.stringify({
-        model: "claude-haiku-4-5-20251001", // Быстрая и дешёвая модель
-        max_tokens: 1024,                    // Максимум символов в ответе
-        system: systemPrompt,               // Инструкции для Claude
-        messages: cleanMessages             // История переписки
+        model: "claude-haiku-4-5-20251001",
+        max_tokens: 1024,
+        system: systemPrompt,
+        messages: cleanMessages
       })
     });
 
-    const data = await response.json();
+    const claudeData = await claudeResponse.json();
 
-    if (!response.ok) {
-      console.error('❌ Ошибка Claude:', data);
-      return res.status(response.status).json({
+    if (!claudeResponse.ok) {
+      console.error('❌ Ошибка Claude:', claudeData);
+      return res.status(claudeResponse.status).json({
         error: "Ошибка Claude API",
-        details: data
+        details: claudeData
       });
     }
 
-    const botText = data.content[0].text;
+    const botText = claudeData.content[0].text;
     console.log('✅ Claude ответил');
 
     // ============================================================
-    // БЛОК 16: Отправляем ответ ИИ в Telegram
+    // ШАГ 12: Отправить ответ ИИ в Telegram
     // ============================================================
+    
     if (tgToken && tgChatId) {
       try {
         const replyBody = {
@@ -321,7 +363,6 @@ module.exports = async (req, res) => {
           text: `🤖 ИИ ответил:\n${botText}`,
         };
 
-        // Добавляем threadId только если есть тема
         if (threadId) replyBody.message_thread_id = threadId;
 
         await fetch(`https://api.telegram.org/bot${tgToken}/sendMessage`, {
@@ -329,15 +370,18 @@ module.exports = async (req, res) => {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(replyBody)
         });
-        console.log('✅ Ответ отправлен в Telegram');
+
+        console.log('✅ Ответ в Telegram отправлен');
+
       } catch (e) {
         console.error('❌ Ошибка отправки ответа:', e.message);
       }
     }
 
     // ============================================================
-    // БЛОК 17: Возвращаем ответ виджету на сайте
+    // ШАГ 13: Вернуть ответ виджету
     // ============================================================
+    
     return res.status(200).json({
       text: botText,
       aiDisabled: false,
