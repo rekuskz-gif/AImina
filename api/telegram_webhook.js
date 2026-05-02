@@ -1,5 +1,15 @@
+// ============================================================
+// ФАЙЛ: api/telegram_webhook.js
+// НАЗНАЧЕНИЕ: Принимает события из Телеграм:
+// 1. Нажатие кнопок (включить/выключить ИИ, история)
+// 2. Ответы менеджера юзеру через Reply
+// ============================================================
+
 const admin = require('firebase-admin');
 
+// Инициализация Firebase Admin — нужен для:
+// 1. Сохранения статуса ИИ (включён/выключен)
+// 2. Сохранения ответов менеджера в историю
 if (!admin.apps.length) {
   admin.initializeApp({
     credential: admin.credential.cert({
@@ -17,25 +27,36 @@ module.exports = async (req, res) => {
   try {
     const { message, callback_query } = req.body;
 
+    // ====================================================
+    // БЛОК 1: Обработка нажатия кнопок
+    // Срабатывает когда менеджер нажимает кнопку в чате
+    // ====================================================
     if (callback_query) {
       const data = callback_query.data;
       const chatId = callback_query.message.chat.id;
       const tgToken = process.env.TG_BOT_TOKEN;
       const db = admin.database();
 
+      // Разбираем данные кнопки — формат: action|clientId|sessionId
+      // Например: off|mina_001|user_abc123
       const parts = data.split('|');
-      const action = parts[0];
-      const clientId = parts[1];
-      const sessionId = parts[2];
+      const action = parts[0];    // off, on, history, status
+      const clientId = parts[1];  // ID клиента
+      const sessionId = parts[2]; // ID сессии юзера
 
       console.log('✅ action:', action, 'clientId:', clientId, 'sessionId:', sessionId);
 
+      // Ссылка на статус ИИ в Firebase
+      // Здесь хранится true/false — включён или выключен ИИ
       const aiEnabledRef = db.ref(`settings/${clientId}/${sessionId}/aiEnabled`);
 
+      // ---- Кнопка "Выключить ИИ" ----
+      // Менеджер хочет сам отвечать юзеру
       if (action === 'off') {
         await aiEnabledRef.set(false);
         console.log('⏸️ ИИ выключен для', clientId, sessionId);
 
+        // Показываем всплывающее уведомление менеджеру
         await fetch(`https://api.telegram.org/bot${tgToken}/answerCallbackQuery`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -45,6 +66,7 @@ module.exports = async (req, res) => {
           })
         });
 
+        // Отправляем новое сообщение в чат с кнопкой "Включить ИИ"
         await fetch(`https://api.telegram.org/bot${tgToken}/sendMessage`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -61,10 +83,13 @@ module.exports = async (req, res) => {
         });
         console.log('✅ Уведомление отправлено');
 
+      // ---- Кнопка "Включить ИИ" ----
+      // Менеджер передаёт управление обратно боту
       } else if (action === 'on') {
         await aiEnabledRef.set(true);
         console.log('▶️ ИИ включён для', clientId, sessionId);
 
+        // Показываем всплывающее уведомление менеджеру
         await fetch(`https://api.telegram.org/bot${tgToken}/answerCallbackQuery`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -74,6 +99,7 @@ module.exports = async (req, res) => {
           })
         });
 
+        // Отправляем новое сообщение в чат с кнопкой "Выключить ИИ"
         await fetch(`https://api.telegram.org/bot${tgToken}/sendMessage`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -90,12 +116,15 @@ module.exports = async (req, res) => {
         });
         console.log('✅ Уведомление отправлено');
 
+      // ---- Кнопка "История" ----
+      // Показывает последние 5 сообщений диалога
       } else if (action === 'history') {
+        // Читаем историю из Firebase
         const historyRef = db.ref(`chats/${clientId}/${sessionId}`);
         const snap = await historyRef.once('value');
         const val = snap.val();
         const history = Array.isArray(val) ? val : [];
-        const last5 = history.slice(-5);
+        const last5 = history.slice(-5); // Берём только последние 5
 
         let historyText = `📜 Последние сообщения [${clientId}]:\n\n`;
         last5.forEach(msg => {
@@ -127,6 +156,8 @@ module.exports = async (req, res) => {
           })
         });
 
+      // ---- Кнопка "Статус" ----
+      // Показывает текущий статус во всплывающем окне
       } else if (action === 'status') {
         const snap = await aiEnabledRef.once('value');
         const aiEnabled = snap.val() !== false;
@@ -144,12 +175,23 @@ module.exports = async (req, res) => {
       return res.status(200).json({ ok: true });
     }
 
+    // ====================================================
+    // БЛОК 2: Обработка ответов менеджера юзеру
+    // Срабатывает когда менеджер делает Reply на сообщение юзера
+    // ====================================================
     if (!message || !message.text) return res.status(200).end();
+
+    // Игнорируем сообщения от ботов
     if (message.from && message.from.is_bot) return res.status(200).end();
+
+    // Только Reply сообщения — не обычные сообщения в чат
     if (!message.reply_to_message) return res.status(200).end();
 
     const originalText = message.reply_to_message.text || '';
+
+    // Извлекаем clientId из текста — формат: [mina_001]
     const clientIdMatch = originalText.match(/\[(.+?)\]/);
+    // Извлекаем sessionId из текста — формат: session: user_xxx
     const sessionIdMatch = originalText.match(/session: ([^\s\n\r]+)/);
 
     if (!clientIdMatch || !sessionIdMatch) {
@@ -159,25 +201,32 @@ module.exports = async (req, res) => {
 
     const clientId = clientIdMatch[1];
     const sessionId = sessionIdMatch[1];
-    const managerText = message.text;
+    const managerText = message.text; // Текст ответа менеджера
     const tgToken = process.env.TG_BOT_TOKEN;
     const chatId = message.chat.id;
 
     const db = admin.database();
+
+    // Читаем историю юзера из Firebase
     const historyRef = db.ref(`chats/${clientId}/${sessionId}`);
     const snapshot = await historyRef.once('value');
     const val = snapshot.val();
     const historyArray = Array.isArray(val) ? val : [];
 
+    // Добавляем ответ менеджера в историю
+    // fromManager: true — чтобы виджет показал его синим цветом
     historyArray.push({
       role: 'assistant',
       content: managerText,
       fromManager: true
     });
 
+    // Сохраняем обновлённую историю в Firebase
+    // Виджет автоматически увидит новое сообщение и покажет юзеру
     await historyRef.set(historyArray);
     console.log('✅ Ответ менеджера сохранён в Firebase');
 
+    // Подтверждаем менеджеру что сообщение отправлено
     await fetch(`https://api.telegram.org/bot${tgToken}/sendMessage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
