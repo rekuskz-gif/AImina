@@ -359,7 +359,8 @@ module.exports = async (req, res) => {
     
     try {
       // ✅ ПИШЕМ новый счётчик в Google Sheet колонку L
-      await sheet.getCell(foundRow, 11).setValue(newSpent.toFixed(4));
+      // ✅ ИСПРАВЛЕНИЕ: используем updateCell вместо setValue
+      await sheet.updateCell(foundRow, 11, newSpent.toFixed(4));
       console.log(`✅ Обновили колонку L (потрачено = ${newSpent.toFixed(4)})`);
       
       // ✅ СОХРАНЯЕМ изменения в Google Sheet
