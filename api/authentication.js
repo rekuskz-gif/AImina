@@ -3,6 +3,8 @@
 // НАЗНАЧЕНИЕ: Главный файл — обрабатывает сообщения от юзера,
 // читает настройки из Google Sheets, отправляет в Телеграм,
 // и генерирует ответ через Claude AI
+// ВАЖНО: Для каждого юзера создаётся отдельная тема в Телеграм группе
+// Тема хранится в Firebase — settings/clientId/sessionId/threadId
 // ============================================================
 
 const { GoogleSpreadsheet } = require('google-spreadsheet');
@@ -103,19 +105,16 @@ module.exports = async (req, res) => {
 
     // Читаем статус ИИ из Firebase
     // По умолчанию ИИ включён (true)
-    // Менеджер может выключить через кнопку в Телеграм
     const aiEnabledRef = db.ref(`settings/${clientId}/${sessionId}/aiEnabled`);
     const aiEnabledSnap = await aiEnabledRef.once('value');
     const aiEnabled = aiEnabledSnap.val() !== false;
     console.log('🤖 aiEnabled:', aiEnabled);
 
     // Читаем номер диалога — показываем в Телеграм
-    // Помогает менеджеру понять какой это разговор
     const dialogNumRef = db.ref(`settings/${clientId}/${sessionId}/dialogNum`);
     const dialogNumSnap = await dialogNumRef.once('value');
     let dialogNum = dialogNumSnap.val();
     if (!dialogNum) {
-      // Если номера нет — создаём новый
       const allRef = db.ref(`settings/${clientId}`);
       const allSnap = await allRef.once('value');
       const all = allSnap.val() || {};
@@ -123,19 +122,53 @@ module.exports = async (req, res) => {
       await dialogNumRef.set(dialogNum);
     }
 
+    // Читаем или создаём тему в Телеграм для этого юзера
+    // Каждый юзер имеет свою тему в группе — чтобы не путаться
+    const threadIdRef = db.ref(`settings/${clientId}/${sessionId}/threadId`);
+    const threadIdSnap = await threadIdRef.once('value');
+    let threadId = threadIdSnap.val();
+
+    if (!threadId && tgToken && tgChatId) {
+      try {
+        // Создаём новую тему в Телеграм группе
+        // Название темы — номер диалога и sessionId
+        const topicRes = await fetch(`https://api.telegram.org/bot${tgToken}/createForumTopic`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            chat_id: tgChatId,
+            name: `Диалог #${dialogNum} [${clientId}]`,
+          })
+        });
+        const topicData = await topicRes.json();
+        if (topicData.ok) {
+          // Сохраняем ID темы в Firebase
+          threadId = topicData.result.message_thread_id;
+          await threadIdRef.set(threadId);
+          console.log('✅ Создана тема:', threadId);
+        } else {
+          console.error('❌ Ошибка создания темы:', JSON.stringify(topicData));
+          threadId = 1; // Fallback — General тема
+        }
+      } catch (e) {
+        console.error('❌ Ошибка создания темы:', e.message);
+        threadId = 1;
+      }
+    }
+
+    console.log('💬 threadId:', threadId);
+
     // Берём последнее сообщение юзера для отправки в Телеграм
     const lastMessage = messages[messages.length - 1];
     const userText = lastMessage && lastMessage.role === 'user' ? lastMessage.content : null;
 
-    // Отправляем сообщение юзера в Телеграм группу менеджеров
+    // Отправляем сообщение юзера в его тему в Телеграм группе
     if (tgToken && tgChatId && userText) {
       try {
         const statusText = aiEnabled ? '🟢 ИИ активен' : '🔴 Менеджер отвечает';
-        const tgText = `💬 Диалог #${dialogNum} [${clientId}]\n👤 Юзер: ${userText}\n\n${statusText}\nsession: ${sessionId}`;
+        const tgText = `👤 Юзер: ${userText}\n\n${statusText}\nsession: ${sessionId}`;
 
-        // Кнопки зависят от текущего статуса:
-        // Если ИИ включён — показываем кнопку "Выключить"
-        // Если ИИ выключен — показываем кнопку "Включить"
+        // Кнопки зависят от текущего статуса ИИ
         const keyboard = aiEnabled ? [[
           { text: '🔴 Выключить ИИ', callback_data: `off|${clientId}|${sessionId}` },
           { text: '📜 История', callback_data: `history|${clientId}|${sessionId}` }
@@ -149,25 +182,24 @@ module.exports = async (req, res) => {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             chat_id: tgChatId,
+            message_thread_id: threadId, // Отправляем в тему юзера
             text: tgText,
             reply_markup: { inline_keyboard: keyboard }
           })
         });
-        console.log('✅ Сообщение отправлено в Телеграм');
+        console.log('✅ Сообщение отправлено в тему', threadId);
       } catch (e) {
         console.error('❌ Ошибка отправки в Телеграм:', e.message);
       }
     }
 
     // Если ИИ выключен — не отвечаем юзеру
-    // Менеджер отвечает вручную через Телеграм
     if (!aiEnabled) {
       console.log('⏸️ ИИ выключен — менеджер отвечает');
       return res.status(200).json({ text: null, aiDisabled: true });
     }
 
     // Читаем промпт из Google Doc
-    // Промпт — инструкция для ИИ как себя вести
     let systemPrompt = "Ты полезный ИИ ассистент";
     if (googleDocId) {
       try {
@@ -187,7 +219,7 @@ module.exports = async (req, res) => {
     }
 
     // Очищаем историю от лишних полей перед отправкой в Claude
-    // Claude принимает только role и content — убираем fromManager и др.
+    // Claude принимает только role и content
     const cleanMessages = messages.map(msg => ({
       role: msg.role,
       content: msg.content
@@ -217,7 +249,7 @@ module.exports = async (req, res) => {
 
     const botText = data.content[0].text;
 
-    // Отправляем ответ ИИ в Телеграм чтобы менеджер видел
+    // Отправляем ответ ИИ в тему юзера чтобы менеджер видел
     if (tgToken && tgChatId) {
       try {
         await fetch(`https://api.telegram.org/bot${tgToken}/sendMessage`, {
@@ -225,6 +257,7 @@ module.exports = async (req, res) => {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             chat_id: tgChatId,
+            message_thread_id: threadId, // В тему юзера
             text: `🤖 ИИ ответил:\n${botText}`,
           })
         });
