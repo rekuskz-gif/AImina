@@ -47,7 +47,6 @@ module.exports = async (req, res) => {
           })
         });
 
-        // Новое короткое сообщение со статусом
         await fetch(`https://api.telegram.org/bot${tgToken}/sendMessage`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -57,7 +56,7 @@ module.exports = async (req, res) => {
             reply_markup: {
               inline_keyboard: [[
                 { text: '🟢 Включить ИИ', callback_data: `on|${clientId}|${sessionId}` },
-                { text: '🔴 Менеджер', callback_data: `status|${clientId}|${sessionId}` },
+                { text: '✅ Менеджер', callback_data: `status|${clientId}|${sessionId}` },
                 { text: '📜 История', callback_data: `history|${clientId}|${sessionId}` }
               ]]
             }
@@ -77,7 +76,6 @@ module.exports = async (req, res) => {
           })
         });
 
-        // Новое короткое сообщение со статусом
         await fetch(`https://api.telegram.org/bot${tgToken}/sendMessage`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -86,8 +84,8 @@ module.exports = async (req, res) => {
             text: `🟢 Статус [${clientId}]: ИИ отвечает автоматически`,
             reply_markup: {
               inline_keyboard: [[
-                { text: '🟢 ИИ активен', callback_data: `status|${clientId}|${sessionId}` },
-                { text: '🔴 Выключить ИИ', callback_data: `off|${clientId}|${sessionId}` },
+                { text: '✅ ИИ активен', callback_data: `status|${clientId}|${sessionId}` },
+                { text: '👤 Выключить ИИ', callback_data: `off|${clientId}|${sessionId}` },
                 { text: '📜 История', callback_data: `history|${clientId}|${sessionId}` }
               ]]
             }
@@ -140,7 +138,7 @@ module.exports = async (req, res) => {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             callback_query_id: callback_query.id,
-            text: aiEnabled ? '🟢 ИИ сейчас активен' : '🔴 Менеджер сейчас отвечает'
+            text: aiEnabled ? '✅ ИИ сейчас активен' : '✅ Менеджер сейчас отвечает'
           })
         });
       }
@@ -148,7 +146,6 @@ module.exports = async (req, res) => {
       return res.status(200).json({ ok: true });
     }
 
-    // Обработка сообщений менеджера
     if (!message || !message.text) return res.status(200).end();
     if (message.from && message.from.is_bot) return res.status(200).end();
     if (!message.reply_to_message) return res.status(200).end();
