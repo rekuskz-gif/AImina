@@ -10,24 +10,7 @@
 // 4. Проверяет: ИИ включён или менеджер отвечает?
 // 5. Если ИИ включён: отправляет в Claude, возвращает ответ
 // 6. Если ИИ выключен: отправляет WARNING сообщение в Telegram
-// 7. Сохраняет всё в Firebase
-// 
-// ПОЛУЧАЕТ от widget.js:
-// {
-//   "clientId": "mina_001",
-//   "sessionId": "user_abc123_1609459200000",
-//   "messages": [
-//     { "role": "user", "content": "Привет!" },
-//     ...
-//   ]
-// }
-// 
-// ОТПРАВЛЯЕТ widget.js:
-// {
-//   "text": "Привет! Чем помочь?",  (или null если ИИ выключен)
-//   "aiDisabled": false,
-//   "avatarUrl": "https://..."
-// }
+// 7. Считает и вычитает токены после ответа ИИ
 // ============================================================
 
 const { GoogleSpreadsheet } = require('google-spreadsheet');
@@ -122,14 +105,21 @@ module.exports = async (req, res) => {
     // === Прочитать данные клиента ===
     // A(0)=clientId B(1) C(2) D(3)=googleDocId E(4)=claudeKey
     // F(5)=tgToken G(6)=tgChatId H(7)=status I(8)=avatarUrl
+    // J(9)=tokenBalance K(10)=tokenTariff L(11)=tokenSpent M(12)=resetDate
     const status = get(7);           // Статус (active/inactive)
     const claudeKey = get(4);        // API ключ Claude
     const googleDocId = get(3);      // Google Doc с промптом
     const tgToken = get(5);          // Telegram токен
     const tgChatId = get(6);         // Telegram группа ID
     const avatarUrl = get(8);        // Аватарка
+    
+    // Читаем токены для последующего использования в ШАГ 12
+    const tokenBalance = get(9);     // J: Баланс (куплено токенов)
+    const tokenTariff = get(10);     // K: Тариф (цена за 1 символ)
+    let tokenSpent = get(11);        // L: Потрачено токенов
 
     console.log(`✅ Клиент найден в строке ${foundRow}`);
+    console.log(`💰 Токены: баланс=${tokenBalance}, тариф=${tokenTariff}, потрачено=${tokenSpent}`);
 
     // === Проверка обязательных данных ===
     if (status !== 'active') {
@@ -140,116 +130,6 @@ module.exports = async (req, res) => {
       return res.status(500).json({ error: "API ключ Claude не найден" });
     }
 
-
-// ============================================================
-    // ШАГ 3.5: Получить информацию о токенах из Google Sheet
-    // ============================================================
-    
-    console.log('💰 Читаем информацию о токенах...');
-    
-    const tokenBalance = get(9);        // J: Баланс (куплено токенов)
-    const tokenTariff = get(10);        // K: Тариф (цена за 1 символ)
-    let tokenSpent = get(11);           // L: Потрачено токенов
-    const resetDate = get(12);          // M: Дата скидания (когда обнулить)
-    
-    console.log(`💰 Токены: баланс=${tokenBalance}, тариф=${tokenTariff}, потрачено=${tokenSpent}, дата скидания=${resetDate}`);
-
-    
-
-   // ============================================================
-    // ШАГ 3.6: Проверить дату скидания и обнулить если нужно
-    // ============================================================
-    
-    console.log('🔄 Проверяем дату скидания...');
-    
-    const today = new Date();
-    
-    // ✅ Преобразуем дату из формата "01.06.2026" в "2026-06-01"
-    let resetDateFormatted = '';
-    if (resetDate && resetDate.includes('.')) {
-      const parts = resetDate.split('.');  // ["01", "06", "2026"]
-      resetDateFormatted = `${parts[2]}-${parts[1]}-${parts[0]}`;  // "2026-06-01"
-      console.log(`📅 Дата скидания парсена: ${resetDate} → ${resetDateFormatted}`);
-    } else {
-      resetDateFormatted = resetDate;
-      console.log(`📅 Дата скидания (формат ISO): ${resetDateFormatted}`);
-    }
-    
-    const reset = new Date(resetDateFormatted);
-    
-    console.log(`📅 Сегодня: ${today.toLocaleDateString('ru-RU')}, Дата скидания: ${reset.toLocaleDateString('ru-RU')}`);
-    
-    // Проверяем: наступила ли дата скидания?
-    if (today >= reset) {
-      console.log('🔄 Дата скидания наступила - обнуляем токены');
-      
-      try {
-        // ✅ ПИШЕМ 0 в колонку L (потрачено = 0)
-        await sheet.getCell(foundRow, 11).setValue(0);
-        console.log('✅ Потрачено обнулено (L = 0)');
-        
-        // ✅ ВЫЧИСЛЯЕМ новую дату (через месяц)
-        const nextReset = new Date(reset);
-        nextReset.setMonth(nextReset.getMonth() + 1);
-        const newResetDate = nextReset.toLocaleDateString('ru-RU');  // формат "01.07.2026"
-        
-        console.log(`📅 Новая дата скидания: ${newResetDate}`);
-        
-        // ✅ ПИШЕМ новую дату в колонку M
-        await sheet.getCell(foundRow, 12).setValue(newResetDate);
-        console.log(`✅ Дата обновлена в M (${newResetDate})`);
-        
-        // ✅ СОХРАНЯЕМ изменения в Google Sheet
-        await sheet.saveUpdatedCells();
-        console.log('✅ Изменения сохранены в Google Sheet');
-        
-        // ✅ ОБНОВЛЯЕМ переменную
-        tokenSpent = 0;
-        
-        console.log(`✅ Успешно! Токены обнулены. Новая дата скидания: ${newResetDate}`);
-        
-      } catch (e) {
-        console.error('❌ Ошибка при обнулении токенов:', e.message);
-        // Продолжаем работу, даже если ошибка при записи в Sheet
-      }
-    } else {
-      console.log('✅ Дата скидания ещё не наступила');
-    }
-
-    // ============================================================
-    // ШАГ 3.7: Проверить достаточно ли токенов
-    // ============================================================
-    
-    const remaining = tokenBalance - tokenSpent;
-    
-    console.log(`💰 Расчёт остатка: ${tokenBalance} - ${tokenSpent} = ${remaining} токенов`);
-    
-    if (remaining < 0) {
-      console.log(`⚠️ Остаток отрицательный! Токены закончились (остаток: ${remaining})`);
-    } else if (remaining === 0) {
-      console.log(`⚠️ Токены полностью использованы (остаток: 0)`);
-    } else {
-      console.log(`✅ Достаточно токенов (осталось: ${remaining})`);
-    }
-    
-    // Если токенов нет - блокируем запрос
-    if (remaining <= 0) {
-      console.log('❌ ЗАПРОС ЗАБЛОКИРОВАН: Токены закончились!');
-      return res.status(403).json({ 
-        error: "Токены закончились",
-        details: {
-          balance: tokenBalance,
-          spent: tokenSpent,
-          remaining: remaining,
-          resetDate: resetDate,
-          message: `Баланс: ${tokenBalance}, Потрачено: ${tokenSpent}, Осталось: ${remaining}. Пополните баланс или дождитесь даты скидания (${resetDate})`
-        }
-      });
-    }
-
-    console.log(`✅ Проверка токенов пройдена успешно. Остаток: ${remaining}`);
-
-    
     // ============================================================
     // ШАГ 4: Получить статус ИИ из Firebase
     // ============================================================
@@ -451,7 +331,7 @@ module.exports = async (req, res) => {
     console.log('✅ Claude ответил');
 
     // ============================================================
-    // ШАГ 12: НОВОЕ - Подсчитать и вычесть токены
+    // ШАГ 12: Подсчитать и вычесть токены
     // ============================================================
     
     console.log('💰 Подсчитываем потраченные токены...');
@@ -517,7 +397,7 @@ module.exports = async (req, res) => {
       }
     }
 
-   // ============================================================
+    // ============================================================
     // ШАГ 14: Вернуть ответ виджету и закрыть функцию
     // ============================================================
     
