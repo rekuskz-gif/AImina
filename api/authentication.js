@@ -1,6 +1,6 @@
 // ============================================================
 // ФАЙЛ: api/authentication.js
-// ВЕРСИЯ: v3.3 - БЕЗ ДУБЛИРОВАНИЯ, С ЛОГАМИ
+// ВЕРСИЯ: v3.4 - ИСПРАВЛЕННЫЙ, БЕЗ ДУБЛИРОВАНИЯ
 // ============================================================
 
 const { GoogleSpreadsheet } = require('google-spreadsheet');
@@ -104,9 +104,10 @@ module.exports = async (req, res) => {
     // ============================================================
     
     console.log('\n📋 Читаем заголовки (строка 1):');
+    console.log(`  📏 Максимально колонок в таблице: ${sheet.columnCount}`);
     
     const headers = {};
-    for (let col = 0; col < 30; col++) {
+    for (let col = 0; col < sheet.columnCount; col++) {
       const headerCell = sheet.getCell(0, col).value;
       if (headerCell) {
         const headerKey = String(headerCell).toLowerCase().trim();
@@ -114,7 +115,6 @@ module.exports = async (req, res) => {
         console.log(`  [${col}] "${headerCell}" → "${headerKey}"`);
       }
     }
-
     console.log(`\n✅ Всего заголовков: ${Object.keys(headers).length}`);
 
     // ============================================================
@@ -174,6 +174,11 @@ module.exports = async (req, res) => {
       
       if (col === undefined) {
         console.warn(`  ⚠️ Колонка "${headerName}" не найдена`);
+        return null;
+      }
+      
+      if (col >= sheet.columnCount) {
+        console.error(`  ❌ Колонка ${col} выходит за границы (макс ${sheet.columnCount})`);
         return null;
       }
       
