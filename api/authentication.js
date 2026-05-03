@@ -63,7 +63,7 @@ module.exports = async (req, res) => {
 
     // ============================================================
     // ШАГ 3: Загрузить конфиг клиента из Google Sheet
-    // v2.5 - live data with logs
+    // v2.6 - live data with logs
     // ============================================================
     
     console.log('📊 Читаем Google Sheet...');
