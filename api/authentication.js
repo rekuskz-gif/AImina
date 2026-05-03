@@ -1,16 +1,6 @@
 // ============================================================
 // ФАЙЛ: api/authentication.js
-// 
-// НАЗНАЧЕНИЕ: Главный API обработки сообщений юзера
-// 
-// ЧТО ДЕЛАЕТ:
-// 1. Получает сообщение от widget.js
-// 2. Загружает конфиг клиента из Google Sheet
-// 3. Отправляет сообщение юзера в Telegram менеджеру
-// 4. Проверяет: ИИ включён или менеджер отвечает?
-// 5. Если ИИ включён: отправляет в Claude, возвращает ответ
-// 6. Если ИИ выключен: отправляет WARNING сообщение в Telegram
-// 7. Считает и вычитает токены после ответа ИИ
+// ВЕРСИЯ: v3.1 - ЛОГИ НА КАЖДОМ ШАГЕ
 // ============================================================
 
 const { GoogleSpreadsheet } = require('google-spreadsheet');
@@ -38,37 +28,46 @@ module.exports = async (req, res) => {
   // ШАГ 1: CORS заголовки
   // ============================================================
   
+  console.log('═════════════════════════════════════════════════════');
+  console.log('🔵 НАЧАЛО ЗАПРОСА');
+  console.log('═════════════════════════════════════════════════════');
+  
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, GET, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
-  if (req.method === 'OPTIONS') return res.status(200).end();
+  if (req.method === 'OPTIONS') {
+    console.log('⚙️ CORS preflight запрос');
+    return res.status(200).end();
+  }
 
   try {
     // ============================================================
     // ШАГ 2: Получить данные от widget
     // ============================================================
     
+    console.log('\n📥 ШАГ 2: Получаем данные от widget');
+    
     const { clientId, sessionId, messages } = req.body;
     
-    console.log(`🔵 Запрос от ${clientId} | session: ${sessionId}`);
+    console.log(`  🆔 clientId: "${clientId}"`);
+    console.log(`  📝 sessionId: "${sessionId}"`);
+    console.log(`  💬 Сообщений в истории: ${messages ? messages.length : 0}`);
 
     if (!clientId || !messages) {
+      console.error('❌ Ошибка: отсутствуют обязательные данные');
       return res.status(400).json({ 
         error: "clientId и messages обязательны",
         received: { clientId, messages: messages ? 'OK' : 'missing' }
       });
     }
 
-
-
     // ============================================================
     // ШАГ 3: Загрузить конфиг клиента из Google Sheet
-    // v2.7 - find columns by header names in row 1
     // ============================================================
     
-    console.log('📊 Читаем Google Sheet...');
-
+    console.log('\n📊 ШАГ 3: Загружаем Google Sheet');
+    
     const auth = new JWT({
       email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
       key: process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, '\n'),
@@ -78,106 +77,173 @@ module.exports = async (req, res) => {
       ],
     });
 
+    console.log(`  🔐 JWT инициализирован`);
+
     const doc = new GoogleSpreadsheet(process.env.GOOGLE_SHEET_ID, auth);
+    console.log(`  📄 Загружаем документ: ${process.env.GOOGLE_SHEET_ID}`);
+    
     await doc.loadInfo();
+    console.log(`  ✅ Документ загружен`);
+    console.log(`  📋 Листы: ${Object.keys(doc.sheetsByTitle).join(', ')}`);
     
     const sheet = doc.sheetsByTitle['Authentication'];
     if (!sheet) {
+      console.error('❌ Лист "Authentication" не найден!');
+      console.error(`  📋 Доступные листы: ${Object.keys(doc.sheetsByTitle).join(', ')}`);
       return res.status(500).json({ error: "Таблица повреждена" });
     }
 
-    await sheet.loadCells();
+    console.log(`  ✅ Лист "Authentication" найден`);
+    console.log(`  📏 Размер: ${sheet.rowCount} строк × ${sheet.columnCount} колонок`);
 
-    // ✅ ЧИТАЕМ ЗАГОЛОВКИ ИЗ СТРОКИ 1
+    await sheet.loadCells();
+    console.log(`  ✅ Ячейки загружены`);
+
+    // ============================================================
+    // ЧИТАЕМ ЗАГОЛОВКИ ИЗ СТРОКИ 1
+    // ============================================================
+    
+    console.log('\n📋 Читаем заголовки (строка 1):');
+    
     const headers = {};
     for (let col = 0; col < 20; col++) {
       const headerCell = sheet.getCell(0, col).value;
       if (headerCell) {
-        headers[headerCell.toLowerCase().trim()] = col;
-        console.log(`📋 Колонка: "${headerCell}" = ${col}`);
+        const headerKey = String(headerCell).toLowerCase().trim();
+        headers[headerKey] = col;
+        console.log(`  [${col}] "${headerCell}" → "${headerKey}"`);
       }
     }
 
-    console.log(`🔍 Ищем клиента: ${clientId}`);
-    console.log(`📊 Всего строк в листе: ${sheet.rowCount}`);
+    console.log(`\n✅ Всего заголовков: ${Object.keys(headers).length}`);
+    console.log(`📋 Ключи: ${Object.keys(headers).join(', ')}`);
 
-    // ✅ ИЩЕМ КЛИЕНТА СО СТРОКИ 5 (пропускаем 1-4)
+    // ============================================================
+    // ИЩЕМ КЛИЕНТА
+    // ============================================================
+    
+    console.log(`\n🔍 ШАГ 3b: Ищем клиента "${clientId}"`);
+    
     let foundRow = null;
+    const clientIdCol = headers['clientid'];
 
-    for (let i = 5; i < sheet.rowCount; i++) {
-      const cellValue = sheet.getCell(i, headers['clientid']).value;
+    if (clientIdCol === undefined) {
+      console.error(`❌ ОШИБКА: Колонка 'clientid' не найдена!`);
+      console.error(`📋 Доступные ключи: ${Object.keys(headers).join(', ')}`);
+      return res.status(500).json({ 
+        error: "Колонка clientid не найдена",
+        availableHeaders: Object.keys(headers)
+      });
+    }
+
+    console.log(`  ✅ Колонка clientId в позиции ${clientIdCol}`);
+    console.log(`  ⏭️ Начинаем со строки 5 (пропускаем 1-4)`);
+    console.log(`\n  Проверяем строки:`);
+
+    for (let i = 5; i < Math.min(25, sheet.rowCount); i++) {
+      const cellValue = sheet.getCell(i, clientIdCol).value;
+      const match = cellValue === clientId;
       
-      if (cellValue && cellValue.startsWith('mina_')) {
-        console.log(`📍 Строка ${i}: clientId="${cellValue}"`);
-        
-        if (cellValue === clientId) {
-          console.log(`🎯 СОВПАДЕНИЕ! Строка ${i} = ${clientId}`);
-          foundRow = i;
-          break;
-        }
+      if (cellValue) {
+        console.log(`    Строка ${i}: "${cellValue}" ${match ? '✅ СОВПАДЕНИЕ!' : ''}`);
+      }
+      
+      if (match) {
+        foundRow = i;
+        console.log(`  🎯 НАЙДЕН в строке ${i}!`);
+        break;
       }
     }
 
     if (foundRow === null) {
-      console.error(`❌ Клиент ${clientId} не найден в листе!`);
-      return res.status(404).json({ error: `Клиент ${clientId} не найден` });
+      console.error(`❌ Клиент "${clientId}" не найден в листе!`);
+      return res.status(404).json({ 
+        error: `Клиент ${clientId} не найден`,
+        searchedColumn: clientIdCol,
+        searchedRows: '5-25'
+      });
     }
 
-    // ✅ ФУНКЦИЯ ДЛЯ ЧТЕНИЯ ЗНАЧЕНИЙ ПО НАЗВАНИЮ КОЛОНКИ
+    console.log(`\n✅ Клиент найден в строке ${foundRow}`);
+
+    // ============================================================
+    // ФУНКЦИЯ ЧТЕНИЯ ПО НАЗВАНИЮ КОЛОНКИ
+    // ============================================================
+    
     const getByHeader = (headerName) => {
-      const col = headers[headerName.toLowerCase().trim()];
+      const lowerName = String(headerName).toLowerCase().trim();
+      const col = headers[lowerName];
+      
       if (col === undefined) {
-        console.warn(`⚠️ Колонка "${headerName}" не найдена!`);
+        console.warn(`  ⚠️ Колонка "${headerName}" не найдена`);
         return null;
       }
+      
       const value = sheet.getCell(foundRow, col).value;
-      console.log(`📖 ${headerName} (col ${col}): ${value}`);
+      console.log(`  📖 ${headerName} (col ${col}): ${value}`);
       return value;
     };
 
-    // === Прочитать данные клиента ПО НАЗВАНИЯМ КОЛОНОК ===
+    // ============================================================
+    // ЧИТАЕМ ДАННЫЕ КЛИЕНТА
+    // ============================================================
+    
+    console.log(`\n📖 Читаем данные клиента из строки ${foundRow}:`);
+    
     const status = getByHeader('status');
-    const claudeKey = getByHeader('claudeApiKey');
-    const googleDocId = getByHeader('google DocId');
-    const tgToken = getByHeader('tgToken');
-    const tgChatId = getByHeader('tg ChatId');
-    const avatarUrl = getByHeader('avatarUrl');
-    const tokenBalance = getByHeader('Баланс/токены');
-    const tokenTariff = getByHeader('Цена 1 символа');
-    let tokenSpent = getByHeader('Потрачено токенов');
+    const botName = getByHeader('bot name');
+    const claudeKey = getByHeader('claudeapikey');
+    const googleDocId = getByHeader('google docid');
+    const tgToken = getByHeader('tgtoken');
+    const tgChatId = getByHeader('tg chatid');
+    const avatarUrl = getByHeader('avatarurl');
+    const tokenBalance = getByHeader('баланс/токены');
+    const tokenTariff = getByHeader('цена 1 символа');
+    let tokenSpent = getByHeader('потрачено токенов');
 
-    console.log(`✅ Клиент найден в строке ${foundRow}`);
-    console.log(`🔐 Status: ${status}`);
-    console.log(`💰 Токены: баланс=${tokenBalance}, тариф=${tokenTariff}, потрачено=${tokenSpent}`);
+    console.log(`\n✅ Данные загружены`);
 
-    // === Проверка обязательных данных ===
+    // ============================================================
+    // ПРОВЕРКА ОБЯЗАТЕЛЬНЫХ ДАННЫХ
+    // ============================================================
+    
+    console.log(`\n🔐 Проверяем обязательные данные:`);
+    
     if (status !== 'active') {
-      console.error(`❌ Статус неправильный: "${status}" !== "active"`);
-      return res.status(403).json({ error: "Агент отключен" });
+      console.error(`  ❌ Status неправильный: "${status}" !== "active"`);
+      return res.status(403).json({ 
+        error: "Агент отключен",
+        actualStatus: status
+      });
     }
+    console.log(`  ✅ Status: active`);
 
     if (!claudeKey) {
+      console.error(`  ❌ Claude API ключ не найден!`);
       return res.status(500).json({ error: "API ключ Claude не найден" });
     }
+    console.log(`  ✅ Claude API ключ: есть`);
 
     // ============================================================
-    // ШАГ 4: Получить статус ИИ из Firebase
+    // ШАГ 4: Firebase - проверить ИИ включен
     // ============================================================
 
-    
- 
-
+    console.log(`\n🔥 ШАГ 4: Firebase - проверяем статус ИИ`);
     
     const db = admin.database();
     const aiEnabledRef = db.ref(`settings/${clientId}/${sessionId}/aiEnabled`);
+    console.log(`  📍 Firebase путь: settings/${clientId}/${sessionId}/aiEnabled`);
+    
     const aiEnabledSnap = await aiEnabledRef.once('value');
-    const aiEnabled = aiEnabledSnap.val() !== false;  // По умолчанию TRUE
-
-    console.log(`🤖 ИИ включён: ${aiEnabled}`);
+    const aiEnabled = aiEnabledSnap.val() !== false;
+    
+    console.log(`  🤖 ИИ включен: ${aiEnabled}`);
 
     // ============================================================
-    // ШАГ 5: Создать уникальный номер диалога
+    // ШАГ 5: Создать номер диалога
     // ============================================================
+    
+    console.log(`\n🔢 ШАГ 5: Создаем номер диалога`);
     
     const dialogNumRef = db.ref(`settings/${clientId}/${sessionId}/dialogNum`);
     const dialogNumSnap = await dialogNumRef.once('value');
@@ -189,12 +255,16 @@ module.exports = async (req, res) => {
       const all = allSnap.val() || {};
       dialogNum = Object.keys(all).length;
       await dialogNumRef.set(dialogNum);
-      console.log(`🔢 Диалог №${dialogNum}`);
+      console.log(`  ✅ Новый диалог: №${dialogNum}`);
+    } else {
+      console.log(`  ℹ️ Существующий диалог: №${dialogNum}`);
     }
 
     // ============================================================
-    // ШАГ 6: Создать тему в Telegram (если нужна)
+    // ШАГ 6: Создать тему в Telegram
     // ============================================================
+    
+    console.log(`\n📱 ШАГ 6: Создаем тему в Telegram`);
     
     const threadIdRef = db.ref(`settings/${clientId}/${sessionId}/threadId`);
     const threadIdSnap = await threadIdRef.once('value');
@@ -202,7 +272,7 @@ module.exports = async (req, res) => {
 
     if (!threadId && tgToken && tgChatId) {
       try {
-        console.log('📱 Создаём тему в Telegram...');
+        console.log(`  🔗 Отправляем запрос к Telegram API...`);
         const topicRes = await fetch(`https://api.telegram.org/bot${tgToken}/createForumTopic`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -211,31 +281,39 @@ module.exports = async (req, res) => {
             name: `Диалог #${dialogNum} [${clientId}]`,
           })
         });
+        
         const topicData = await topicRes.json();
+        console.log(`  📥 Ответ Telegram: ${topicData.ok ? '✅' : '❌'}`);
+        
         if (topicData.ok) {
           threadId = topicData.result.message_thread_id;
           await threadIdRef.set(threadId);
-          console.log(`✅ Тема создана: ${threadId}`);
+          console.log(`  ✅ Тема создана: ${threadId}`);
+        } else {
+          console.warn(`  ⚠️ Telegram вернул ошибку: ${topicData.description}`);
         }
       } catch (e) {
-        console.error('❌ Ошибка создания темы:', e.message);
+        console.error(`  ❌ Ошибка Telegram: ${e.message}`);
       }
+    } else {
+      console.log(`  ℹ️ Тема уже существует или нет Telegram токена`);
     }
 
     // ============================================================
-    // ШАГ 7: Отправить ПОЛНЫЙ ДИАЛОГ в Telegram менеджеру
+    // ШАГ 7: Отправить ПОЛНЫЙ ДИАЛОГ в Telegram
     // ============================================================
+    
+    console.log(`\n📤 ШАГ 7: Отправляем диалог в Telegram`);
     
     const lastMsg = messages[messages.length - 1];
     const userText = lastMsg && lastMsg.role === 'user' ? lastMsg.content : null;
 
     if (tgToken && tgChatId && userText) {
       try {
-        console.log('📤 Отправляем ПОЛНЫЙ ДИАЛОГ в Telegram...');
+        console.log(`  📝 Форматируем диалог (${messages.length} сообщений)...`);
 
-        // ✅ Форматируем ВСЮ историю диалога
         let dialogText = '';
-        messages.forEach(msg => {
+        messages.forEach((msg, idx) => {
           if (msg.role === 'user') {
             dialogText += `👤 Юзер: ${msg.content}\n`;
           } else if (msg.role === 'assistant') {
@@ -243,18 +321,11 @@ module.exports = async (req, res) => {
           }
         });
 
-        // ✅ Если ИИ ВЫКЛЮЧЕН - добавляем WARNING
-        let statusText = '';
-        if (!aiEnabled) {
-          statusText = `🔴 ИИ ВЫК. Отвечай через Reply!`;
-        } else {
-          statusText = `🟢 ИИ активен`;
-        }
-        
-        // ✅ Собираем сообщение с ПОЛНОЙ историей
+        const statusText = !aiEnabled ? `🔴 ИИ ВЫК. Отвечай через Reply!` : `🟢 ИИ активен`;
         const tgText = `💬 Диалог #${dialogNum} [${clientId}]\n\n${dialogText}\n${statusText}\nsession: ${sessionId}`;
 
-        // ✅ Создаём кнопки для управления ИИ
+        console.log(`  📊 Размер сообщения: ${tgText.length} символов`);
+
         const keyboard = aiEnabled ? [[
           { text: '🔴 Выключить ИИ', callback_data: `off|${clientId}|${sessionId}` },
           { text: '📜 История', callback_data: `history|${clientId}|${sessionId}` }
@@ -271,16 +342,18 @@ module.exports = async (req, res) => {
 
         if (threadId) msgBody.message_thread_id = threadId;
 
-        await fetch(`https://api.telegram.org/bot${tgToken}/sendMessage`, {
+        console.log(`  🔗 Отправляем в Telegram...`);
+        const tgRes = await fetch(`https://api.telegram.org/bot${tgToken}/sendMessage`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(msgBody)
         });
 
-        console.log('✅ ПОЛНЫЙ ДИАЛОГ отправлен в Telegram');
+        const tgData = await tgRes.json();
+        console.log(`  📥 Ответ Telegram: ${tgData.ok ? '✅ OK' : '❌ ОШИБКА'}`);
 
-        // ✅ Если ИИ ВЫКЛЮЧЕН - возвращаем пусто
         if (!aiEnabled) {
+          console.log(`  ⏸️ ИИ выключен - возвращаем null`);
           return res.status(200).json({
             text: null,
             aiDisabled: true,
@@ -289,20 +362,26 @@ module.exports = async (req, res) => {
         }
 
       } catch (e) {
-        console.error('❌ Ошибка Telegram:', e.message);
+        console.error(`  ❌ Ошибка Telegram: ${e.message}`);
       }
+    } else {
+      console.log(`  ⚠️ Нет Telegram токена или сообщения`);
     }
 
     // ============================================================
-    // ШАГ 9: Если ИИ включён - читаем промпт из Google Doc
+    // ШАГ 9: Читаем промпт из Google Doc
     // ============================================================
+    
+    console.log(`\n📄 ШАГ 9: Читаем промпт из Google Doc`);
     
     let systemPrompt = "Ты полезный помощник";
 
     if (googleDocId) {
       try {
-        console.log('📄 Читаем промпт из Google Doc...');
+        console.log(`  🔗 Google Doc ID: ${googleDocId.substring(0, 20)}...`);
         const docsClient = google.docs({ version: 'v1', auth });
+        
+        console.log(`  📥 Загружаем документ...`);
         const docRes = await docsClient.documents.get({ documentId: googleDocId });
         
         systemPrompt = docRes.data.body.content
@@ -313,28 +392,38 @@ module.exports = async (req, res) => {
           .join('')
           .trim();
 
-        console.log(`✅ Промпт загружен (${systemPrompt.length} символов)`);
+        console.log(`  ✅ Промпт загружен (${systemPrompt.length} символов)`);
 
       } catch (e) {
-        console.error('❌ Ошибка промпта:', e.message);
+        console.error(`  ❌ Ошибка Google Doc: ${e.message}`);
       }
+    } else {
+      console.log(`  ⚠️ Google Doc ID не найден`);
     }
 
     // ============================================================
     // ШАГ 10: Очистить историю для Claude
-    // Claude принимает только role и content
     // ============================================================
+    
+    console.log(`\n📝 ШАГ 10: Готовим историю для Claude`);
     
     const cleanMessages = messages.map(msg => ({
       role: msg.role,
       content: msg.content
     }));
 
+    console.log(`  ✅ История очищена (${cleanMessages.length} сообщений)`);
+
     // ============================================================
     // ШАГ 11: Отправить в Claude AI
     // ============================================================
     
-    console.log('🚀 Отправляем в Claude...');
+    console.log(`\n🚀 ШАГ 11: Отправляем в Claude API`);
+    
+    console.log(`  🔐 Claude ключ: ${claudeKey.substring(0, 10)}...`);
+    console.log(`  📊 Model: claude-haiku-4-5-20251001`);
+    console.log(`  📝 Max tokens: 1024`);
+    console.log(`  💬 Сообщений: ${cleanMessages.length}`);
 
     const claudeResponse = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -351,10 +440,12 @@ module.exports = async (req, res) => {
       })
     });
 
+    console.log(`  📥 Статус Claude: ${claudeResponse.status}`);
+
     const claudeData = await claudeResponse.json();
 
     if (!claudeResponse.ok) {
-      console.error('❌ Ошибка Claude:', claudeData);
+      console.error(`  ❌ Claude ошибка: ${claudeData.error?.message || 'unknown'}`);
       return res.status(claudeResponse.status).json({
         error: "Ошибка Claude API",
         details: claudeData
@@ -362,64 +453,51 @@ module.exports = async (req, res) => {
     }
 
     const botText = claudeData.content[0].text;
-    console.log('✅ Claude ответил');
+    console.log(`  ✅ Claude ответил (${botText.length} символов)`);
 
-// ============================================================
-    // ШАГ 12: Подсчитать и вычесть токены
-    // v2.3 - fix cache
+    // ============================================================
+    // ШАГ 12: Подсчитать и записать токены
     // ============================================================
     
-    // ✅ Убедимся что всё это числа (преобразуем строки в числа)
+    console.log(`\n💰 ШАГ 12: Подсчитываем токены`);
+    
     const tokenBalanceNum = parseFloat(tokenBalance) || 0;
     const tokenTariffNum = parseFloat(tokenTariff) || 0;
     const tokenSpentNum = parseFloat(tokenSpent) || 0;
     
-    console.log('💰 Подсчитываем потраченные токены...');
-    console.log(`💰 Токены (преобразованы): баланс=${tokenBalanceNum}, тариф=${tokenTariffNum}, потрачено=${tokenSpentNum}`);
+    console.log(`  💾 До: баланс=${tokenBalanceNum}, тариф=${tokenTariffNum}, потрачено=${tokenSpentNum}`);
     
-    // ✅ Считаем символы в ответе ИИ
     const responseChars = botText.length;
-    console.log(`📝 Символов в ответе ИИ: ${responseChars}`);
-    
-    // ✅ Считаем стоимость ответа
     const costResponse = responseChars * tokenTariffNum;
-    console.log(`💸 Стоимость ответа: ${responseChars} символов × ${tokenTariffNum} = ${costResponse.toFixed(4)} токенов`);
-    
-    // ✅ Новый счётчик потрачено
     const newSpent = tokenSpentNum + costResponse;
-    console.log(`📊 Новый счётчик: ${tokenSpentNum} + ${costResponse.toFixed(4)} = ${newSpent.toFixed(4)} токенов`);
-    
-    // ✅ Проверяем остаток
     const newRemaining = tokenBalanceNum - newSpent;
-    console.log(`💰 Остаток после ответа: ${tokenBalanceNum} - ${newSpent.toFixed(4)} = ${newRemaining.toFixed(4)} токенов`);
     
-    if (newRemaining < 0) {
-      console.warn(`⚠️ ВНИМАНИЕ: Остаток стал отрицательным! ${newRemaining.toFixed(4)}`);
-    }
-    
+    console.log(`  📝 Ответ: ${responseChars} символов × ${tokenTariffNum} = ${costResponse.toFixed(4)}`);
+    console.log(`  📊 После: потрачено=${newSpent.toFixed(4)}, остаток=${newRemaining.toFixed(4)}`);
+
     try {
-      // ✅ ПИШЕМ новый счётчик в Google Sheet колонку L (11)
-      // ✅ Прямое присваивание значения
-      sheet.getCell(foundRow, 11).value = newSpent.toFixed(4);
-      console.log(`✅ Установили значение в колонку L: ${newSpent.toFixed(4)}`);
-      
-      // ✅ СОХРАНЯЕМ все изменения в Google Sheet
-      await sheet.saveUpdatedCells();
-      console.log('✅ Изменения сохранены в Google Sheet');
-      
+      const tokenSpentCol = headers['потрачено токенов'];
+      if (tokenSpentCol !== undefined) {
+        sheet.getCell(foundRow, tokenSpentCol).value = newSpent.toFixed(4);
+        console.log(`  🔗 Записываем в колонку ${tokenSpentCol}...`);
+        await sheet.saveUpdatedCells();
+        console.log(`  ✅ Токены сохранены в Google Sheet`);
+      } else {
+        console.warn(`  ⚠️ Колонка "потрачено токенов" не найдена`);
+      }
     } catch (e) {
-      console.error('❌ Ошибка при записи токенов в Sheet:', e.message);
-      console.error('❌ Stack trace:', e.stack);
+      console.error(`  ❌ Ошибка при сохранении токенов: ${e.message}`);
     }
-    
-    console.log(`✅ Подсчёт токенов завершён. Новый остаток: ${newRemaining.toFixed(4)}`);
 
     // ============================================================
-    // ШАГ 13: Отправить ответ ИИ в Telegram
+    // ШАГ 13: Отправить ответ в Telegram
     // ============================================================
+    
+    console.log(`\n📤 ШАГ 13: Отправляем ответ в Telegram`);
     
     if (tgToken && tgChatId) {
       try {
+        console.log(`  📝 Размер ответа: ${botText.length} символов`);
         const replyBody = {
           chat_id: tgChatId,
           text: `🤖 ИИ ответил:\n${botText}`,
@@ -427,24 +505,31 @@ module.exports = async (req, res) => {
 
         if (threadId) replyBody.message_thread_id = threadId;
 
+        console.log(`  🔗 Отправляем в Telegram...`);
         await fetch(`https://api.telegram.org/bot${tgToken}/sendMessage`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(replyBody)
         });
 
-        console.log('✅ Ответ ИИ отправлен в Telegram');
+        console.log(`  ✅ Ответ отправлен в Telegram`);
 
       } catch (e) {
-        console.error('❌ Ошибка отправки ответа в Telegram:', e.message);
+        console.error(`  ❌ Ошибка Telegram: ${e.message}`);
       }
     }
 
     // ============================================================
-    // ШАГ 14: Вернуть ответ виджету и закрыть функцию
+    // ШАГ 14: Вернуть ответ виджету
     // ============================================================
     
-    console.log('📤 Возвращаем ответ виджету...');
+    console.log(`\n📤 ШАГ 14: Возвращаем ответ виджету`);
+    console.log(`  ✅ Текст: ${botText.substring(0, 50)}...`);
+    console.log(`  💾 Token info: spent=${newSpent.toFixed(4)}, remaining=${newRemaining.toFixed(4)}`);
+    
+    console.log('\n═════════════════════════════════════════════════════');
+    console.log('✅ ЗАПРОС УСПЕШНО ОБРАБОТАН');
+    console.log('═════════════════════════════════════════════════════\n');
     
     return res.status(200).json({
       text: botText,
@@ -458,7 +543,11 @@ module.exports = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('❌ Auth Error:', error.message);
+    console.error('\n❌ ===== КРИТИЧЕСКАЯ ОШИБКА =====');
+    console.error(`📛 Сообщение: ${error.message}`);
+    console.error(`📍 Stack: ${error.stack}`);
+    console.error('================================\n');
+    
     return res.status(500).json({
       error: "Ошибка сервера",
       message: error.message
