@@ -65,7 +65,7 @@ module.exports = async (req, res) => {
     // ============================================================
     
     console.log('📊 Читаем Google Sheet...');
-// v2.2 - cache buster
+ 
     const auth = new JWT({
       email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
       key: process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, '\n'),
@@ -74,7 +74,7 @@ module.exports = async (req, res) => {
         'https://www.googleapis.com/auth/documents.readonly'
       ],
     });
-
+ 
     const doc = new GoogleSpreadsheet(process.env.GOOGLE_SHEET_ID, auth);
     await doc.loadInfo();
     
@@ -82,58 +82,67 @@ module.exports = async (req, res) => {
     if (!sheet) {
       return res.status(500).json({ error: "Таблица повреждена" });
     }
-
+ 
     await sheet.loadCells();
-
+ 
     // Найти строку клиента
-    // ✅ ИСПРАВЛЕНИЕ: Начинаем с i = 1 (строка 0 = шапка, строка 1+ = данные)
-    const defaultRow = 1;
+    // ✅ Начинаем со строки 2 (строка 1 = шапка)
+    // ✅ Пропускаем пустые и мусорные строки
+    const defaultRow = 1;  // Строка 1 = шапка (заголовки)
     let foundRow = null;
-
-    for (let i = 1; i < sheet.rowCount; i++) {
-      if (sheet.getCell(i, 0).value === clientId) {
-        foundRow = i;
-        break;
+ 
+    for (let i = 2; i < sheet.rowCount; i++) {
+      const cellValue = sheet.getCell(i, 0).value;
+      
+      // Пропускаем пустые строки и строки с текстом (не начинаются с mina_)
+      if (cellValue && cellValue.startsWith('mina_')) {
+        if (cellValue === clientId) {
+          foundRow = i;
+          break;
+        }
       }
     }
-
+ 
     if (foundRow === null) {
       return res.status(404).json({ error: `Клиент ${clientId} не найден` });
     }
-
+ 
     const get = (col) => sheet.getCell(foundRow, col).value || sheet.getCell(defaultRow, col).value;
-
+ 
     // === Прочитать данные клиента ===
-    // A(0)=clientId B(1) C(2) D(3)=googleDocId E(4)=claudeKey
-    // F(5)=tgToken G(6)=tgChatId H(7)=status I(8)=avatarUrl
-    // J(9)=tokenBalance K(10)=tokenTariff L(11)=tokenSpent M(12)=resetDate
-    const status = get(7);           // Статус (active/inactive)
+    // A(0)=clientId B(1)=botName C(2)=primaryColor D(3)=googleDocId E(4)=claudeKey
+    // F(5)=tgToken G(6)=tgChatId H(7)=tgChatId (дублирование?) I(8)=status J(9)=avatarUrl
+    // K(10)=tokenBalance L(11)=tokenTariff M(12)=tokenSpent N(13)=resetDate
+    
+    const status = get(8);           // Статус (active/inactive)
     const claudeKey = get(4);        // API ключ Claude
     const googleDocId = get(3);      // Google Doc с промптом
     const tgToken = get(5);          // Telegram токен
     const tgChatId = get(6);         // Telegram группа ID
-    const avatarUrl = get(8);        // Аватарка
+    const avatarUrl = get(9);        // Аватарка
     
     // Читаем токены для последующего использования в ШАГ 12
-    const tokenBalance = get(9);     // J: Баланс (куплено токенов)
-    const tokenTariff = get(10);     // K: Тариф (цена за 1 символ)
-    let tokenSpent = get(11);        // L: Потрачено токенов
-
+    const tokenBalance = get(10);    // K: Баланс (куплено токенов)
+    const tokenTariff = get(11);     // L: Тариф (цена за 1 символ)
+    let tokenSpent = get(12);        // M: Потрачено токенов
+ 
     console.log(`✅ Клиент найден в строке ${foundRow}`);
     console.log(`💰 Токены: баланс=${tokenBalance}, тариф=${tokenTariff}, потрачено=${tokenSpent}`);
-
+ 
     // === Проверка обязательных данных ===
     if (status !== 'active') {
       return res.status(403).json({ error: "Агент отключен" });
     }
-
+ 
     if (!claudeKey) {
       return res.status(500).json({ error: "API ключ Claude не найден" });
     }
-
+ 
     // ============================================================
     // ШАГ 4: Получить статус ИИ из Firebase
     // ============================================================
+ 
+
     
     const db = admin.database();
     const aiEnabledRef = db.ref(`settings/${clientId}/${sessionId}/aiEnabled`);
