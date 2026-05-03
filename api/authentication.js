@@ -200,9 +200,9 @@ module.exports = async (req, res) => {
     const tgToken = getByHeader('tgtoken');
     const tgChatId = getByHeader('tg chatid');
     const avatarUrl = getByHeader('avatarurl');
-    const tokenBalance = getByHeader('балан/токены');
-    const tokenTariff = getByHeader('цена 1 сивола');
-    let tokenSpent = getByHeader('потрачено токенов');
+    const tokenBalance = getByHeader('Balance');
+    const tokenTariff = getByHeader('Price Per Char');
+    let tokenSpent = getByHeader('Spent Tokens');
 
     console.log(`\n✅ Данные загружены`);
 
@@ -479,14 +479,14 @@ module.exports = async (req, res) => {
     console.log(`  📊 После: потрачено=${newSpent.toFixed(4)}, остаток=${newRemaining.toFixed(4)}`);
 
     try {
-      const tokenSpentCol = headers['потрачено токенов'];
+      const tokenSpentCol = headers['Spent Tokens'];
       if (tokenSpentCol !== undefined) {
         sheet.getCell(foundRow, tokenSpentCol).value = newSpent.toFixed(4);
         console.log(`  🔗 Записываем в колонку ${tokenSpentCol}...`);
         await sheet.saveUpdatedCells();
         console.log(`  ✅ Токены сохранены в Google Sheet`);
       } else {
-        console.warn(`  ⚠️ Колонка "потрачено токенов" не найдена`);
+        console.warn(`  ⚠️ Колонка "Spent Tokens" не найдена`);
       }
     } catch (e) {
       console.error(`  ❌ Ошибка при сохранении токенов: ${e.message}`);
