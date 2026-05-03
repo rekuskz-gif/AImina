@@ -61,9 +61,10 @@ module.exports = async (req, res) => {
     }
 
 
-   // ============================================================
+
+    // ============================================================
     // ШАГ 3: Загрузить конфиг клиента из Google Sheet
-    // v2.6 - skip rows 2,3,4
+    // v2.7 - find columns by header names in row 1
     // ============================================================
     
     console.log('📊 Читаем Google Sheet...');
@@ -87,32 +88,32 @@ module.exports = async (req, res) => {
 
     await sheet.loadCells();
 
-    // Найти строку клиента
-    // ✅ Строки 1-4 = заметки/шапка (НЕ ЧИТАЕМ)
-    // ✅ Начинаем СО СТРОКИ 5 (первые реальные данные)
-    const defaultRow = 1;
-    let foundRow = null;
+    // ✅ ЧИТАЕМ ЗАГОЛОВКИ ИЗ СТРОКИ 1
+    const headers = {};
+    for (let col = 0; col < 20; col++) {
+      const headerCell = sheet.getCell(0, col).value;
+      if (headerCell) {
+        headers[headerCell.toLowerCase().trim()] = col;
+        console.log(`📋 Колонка: "${headerCell}" = ${col}`);
+      }
+    }
 
     console.log(`🔍 Ищем клиента: ${clientId}`);
     console.log(`📊 Всего строк в листе: ${sheet.rowCount}`);
-    console.log(`⏭️ Пропускаем строки 1-4 (заметки)`);
 
-    // ✅ ЯВНО ПРОПУСКАЕМ СТРОКИ 2, 3, 4
-    // ✅ НАЧИНАЕМ СО СТРОКИ 5
+    // ✅ ИЩЕМ КЛИЕНТА СО СТРОКИ 5 (пропускаем 1-4)
+    let foundRow = null;
+
     for (let i = 5; i < sheet.rowCount; i++) {
-      const cellValue = sheet.getCell(i, 0).value;
-      console.log(`📍 Строка ${i}: cellValue="${cellValue}"`);
+      const cellValue = sheet.getCell(i, headers['clientid']).value;
       
-      // Пропускаем пустые строки и строки с текстом (не начинаются с mina_)
       if (cellValue && cellValue.startsWith('mina_')) {
-        console.log(`✅ Найдена строка с mina_: "${cellValue}"`);
+        console.log(`📍 Строка ${i}: clientId="${cellValue}"`);
         
         if (cellValue === clientId) {
           console.log(`🎯 СОВПАДЕНИЕ! Строка ${i} = ${clientId}`);
           foundRow = i;
           break;
-        } else {
-          console.log(`❌ Не совпадает: "${cellValue}" !== "${clientId}"`);
         }
       }
     }
@@ -122,29 +123,32 @@ module.exports = async (req, res) => {
       return res.status(404).json({ error: `Клиент ${clientId} не найден` });
     }
 
-    const get = (col) => sheet.getCell(foundRow, col).value || sheet.getCell(defaultRow, col).value;
+    // ✅ ФУНКЦИЯ ДЛЯ ЧТЕНИЯ ЗНАЧЕНИЙ ПО НАЗВАНИЮ КОЛОНКИ
+    const getByHeader = (headerName) => {
+      const col = headers[headerName.toLowerCase().trim()];
+      if (col === undefined) {
+        console.warn(`⚠️ Колонка "${headerName}" не найдена!`);
+        return null;
+      }
+      const value = sheet.getCell(foundRow, col).value;
+      console.log(`📖 ${headerName} (col ${col}): ${value}`);
+      return value;
+    };
 
-    // === Прочитать данные клиента ===
-    // Строка 5 (mina_001):
-    // A(0)=clientId B(1)=botName C(2)=primaryColor D(3)=googleDocId E(4)=claudeKey
-    // F(5)=tgToken G(6)=tgChatId H(7)=tgChatId(доп) I(8)=status J(9)=avatarUrl
-    // K(10)=tokenBalance L(11)=tokenTariff M(12)=tokenSpent N(13)=resetDate
-    
-    const status = get(8);           // I: Статус (active/inactive)
-    const claudeKey = get(4);        // E: API ключ Claude
-    const googleDocId = get(3);      // D: Google Doc с промптом
-    const tgToken = get(5);          // F: Telegram токен
-    const tgChatId = get(6);         // G: Telegram группа ID
-    const avatarUrl = get(9);        // J: Аватарка
-    
-    // Читаем токены для последующего использования в ШАГ 12
-    const tokenBalance = get(10);    // K: Баланс (куплено токенов)
-    const tokenTariff = get(11);     // L: Тариф (цена за 1 символ)
-    let tokenSpent = get(12);        // M: Потрачено токенов
+    // === Прочитать данные клиента ПО НАЗВАНИЯМ КОЛОНОК ===
+    const status = getByHeader('status');
+    const claudeKey = getByHeader('claudeApiKey');
+    const googleDocId = getByHeader('google DocId');
+    const tgToken = getByHeader('tgToken');
+    const tgChatId = getByHeader('tg ChatId');
+    const avatarUrl = getByHeader('avatarUrl');
+    const tokenBalance = getByHeader('Баланс/токены');
+    const tokenTariff = getByHeader('Цена 1 символа');
+    let tokenSpent = getByHeader('Потрачено токенов');
 
     console.log(`✅ Клиент найден в строке ${foundRow}`);
-    console.log(`💰 Токены: баланс=${tokenBalance}, тариф=${tokenTariff}, потрачено=${tokenSpent}`);
     console.log(`🔐 Status: ${status}`);
+    console.log(`💰 Токены: баланс=${tokenBalance}, тариф=${tokenTariff}, потрачено=${tokenSpent}`);
 
     // === Проверка обязательных данных ===
     if (status !== 'active') {
