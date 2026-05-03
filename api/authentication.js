@@ -492,6 +492,22 @@ module.exports = async (req, res) => {
       console.error(`  ❌ Ошибка при сохранении токенов: ${e.message}`);
     }
 
+    try {
+      const tokenBalanceCol = headers['balance'];
+      if (tokenBalanceCol !== undefined) {
+        sheet.getCell(foundRow, tokenBalanceCol).value = newRemaining.toFixed(4);
+        console.log(`  🔗 Записываем баланс в колонку ${tokenBalanceCol}...`);
+        await sheet.saveUpdatedCells();
+        console.log(`  ✅ Баланс сохранен в Google Sheet`);
+      } else {
+        console.warn(`  ⚠️ Колонка "balance" не найдена`);
+      }
+    } catch (e) {
+      console.error(`  ❌ Ошибка при сохранении баланса: ${e.message}`);
+    }
+
+    
+
     // ============================================================
     // ШАГ 13: Отправить ответ в Telegram
     // ============================================================
