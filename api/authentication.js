@@ -62,6 +62,7 @@ module.exports = async (req, res) => {
 
     // ============================================================
     // ШАГ 3: Загрузить конфиг клиента из Google Sheet
+    // v2.4 - fix row 5 with debug logs
     // ============================================================
     
     console.log('📊 Читаем Google Sheet...');
@@ -92,12 +93,19 @@ module.exports = async (req, res) => {
     const defaultRow = 1;  // Строка 1 = шапка (заголовки)
     let foundRow = null;
 
+    console.log(`🔍 Ищем клиента: ${clientId}`);
+    console.log(`📊 Всего строк в листе: ${sheet.rowCount}`);
+
     for (let i = 5; i < sheet.rowCount; i++) {
       const cellValue = sheet.getCell(i, 0).value;
+      console.log(`📍 Строка ${i}: cellValue="${cellValue}"`);
       
       // Пропускаем пустые строки и строки с текстом (не начинаются с mina_)
       if (cellValue && cellValue.startsWith('mina_')) {
+        console.log(`✅ Найдена строка с mina_: "${cellValue}"`);
+        
         if (cellValue === clientId) {
+          console.log(`🎯 СОВПАДЕНИЕ! Строка ${i} = ${clientId}`);
           foundRow = i;
           break;
         }
@@ -105,6 +113,7 @@ module.exports = async (req, res) => {
     }
 
     if (foundRow === null) {
+      console.error(`❌ Клиент ${clientId} не найден в листе!`);
       return res.status(404).json({ error: `Клиент ${clientId} не найден` });
     }
 
