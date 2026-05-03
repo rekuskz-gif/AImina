@@ -96,7 +96,7 @@ module.exports = async (req, res) => {
     console.log(`🔍 Ищем клиента: ${clientId}`);
     console.log(`📊 Всего строк в листе: ${sheet.rowCount}`);
 
-    for (let i = 5; i < sheet.rowCount; i++) {
+    for (let i = 4; i < sheet.rowCount; i++) {
       const cellValue = sheet.getCell(i, 0).value;
       console.log(`📍 Строка ${i}: cellValue="${cellValue}"`);
       
