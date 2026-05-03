@@ -61,9 +61,9 @@ module.exports = async (req, res) => {
     }
 
 
-    // ============================================================
+   // ============================================================
     // ШАГ 3: Загрузить конфиг клиента из Google Sheet
-    // v2.6 - live data with logs
+    // v2.6 - skip rows 2,3,4
     // ============================================================
     
     console.log('📊 Читаем Google Sheet...');
@@ -88,15 +88,18 @@ module.exports = async (req, res) => {
     await sheet.loadCells();
 
     // Найти строку клиента
-    // ✅ Начинаем со строки 5 (первые реальные данные)
-    // ✅ Пропускаем пустые и мусорные строки
-    const defaultRow = 1;  // Строка 1 = шапка (заголовки)
+    // ✅ Строки 1-4 = заметки/шапка (НЕ ЧИТАЕМ)
+    // ✅ Начинаем СО СТРОКИ 5 (первые реальные данные)
+    const defaultRow = 1;
     let foundRow = null;
 
     console.log(`🔍 Ищем клиента: ${clientId}`);
     console.log(`📊 Всего строк в листе: ${sheet.rowCount}`);
+    console.log(`⏭️ Пропускаем строки 1-4 (заметки)`);
 
-    for (let i = 4; i < sheet.rowCount; i++) {
+    // ✅ ЯВНО ПРОПУСКАЕМ СТРОКИ 2, 3, 4
+    // ✅ НАЧИНАЕМ СО СТРОКИ 5
+    for (let i = 5; i < sheet.rowCount; i++) {
       const cellValue = sheet.getCell(i, 0).value;
       console.log(`📍 Строка ${i}: cellValue="${cellValue}"`);
       
@@ -122,8 +125,9 @@ module.exports = async (req, res) => {
     const get = (col) => sheet.getCell(foundRow, col).value || sheet.getCell(defaultRow, col).value;
 
     // === Прочитать данные клиента ===
+    // Строка 5 (mina_001):
     // A(0)=clientId B(1)=botName C(2)=primaryColor D(3)=googleDocId E(4)=claudeKey
-    // F(5)=tgToken G(6)=tgChatId H(7)=tgChatId (доп) I(8)=status J(9)=avatarUrl
+    // F(5)=tgToken G(6)=tgChatId H(7)=tgChatId(доп) I(8)=status J(9)=avatarUrl
     // K(10)=tokenBalance L(11)=tokenTariff M(12)=tokenSpent N(13)=resetDate
     
     const status = get(8);           // I: Статус (active/inactive)
@@ -140,9 +144,11 @@ module.exports = async (req, res) => {
 
     console.log(`✅ Клиент найден в строке ${foundRow}`);
     console.log(`💰 Токены: баланс=${tokenBalance}, тариф=${tokenTariff}, потрачено=${tokenSpent}`);
+    console.log(`🔐 Status: ${status}`);
 
     // === Проверка обязательных данных ===
     if (status !== 'active') {
+      console.error(`❌ Статус неправильный: "${status}" !== "active"`);
       return res.status(403).json({ error: "Агент отключен" });
     }
 
