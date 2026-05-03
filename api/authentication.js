@@ -65,7 +65,7 @@ module.exports = async (req, res) => {
     // ============================================================
     
     console.log('📊 Читаем Google Sheet...');
- 
+
     const auth = new JWT({
       email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
       key: process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, '\n'),
@@ -74,7 +74,7 @@ module.exports = async (req, res) => {
         'https://www.googleapis.com/auth/documents.readonly'
       ],
     });
- 
+
     const doc = new GoogleSpreadsheet(process.env.GOOGLE_SHEET_ID, auth);
     await doc.loadInfo();
     
@@ -82,16 +82,17 @@ module.exports = async (req, res) => {
     if (!sheet) {
       return res.status(500).json({ error: "Таблица повреждена" });
     }
- 
+
     await sheet.loadCells();
- 
+
     // Найти строку клиента
-    // ✅ Начинаем со строки 2 (строка 1 = шапка)
+    // ✅ Строки 1-4 = заметки (пропускаем)
+    // ✅ Начинаем со строки 5 (первые реальные данные)
     // ✅ Пропускаем пустые и мусорные строки
     const defaultRow = 1;  // Строка 1 = шапка (заголовки)
     let foundRow = null;
- 
-    for (let i = 2; i < sheet.rowCount; i++) {
+
+    for (let i = 5; i < sheet.rowCount; i++) {
       const cellValue = sheet.getCell(i, 0).value;
       
       // Пропускаем пустые строки и строки с текстом (не начинаются с mina_)
@@ -102,42 +103,42 @@ module.exports = async (req, res) => {
         }
       }
     }
- 
+
     if (foundRow === null) {
       return res.status(404).json({ error: `Клиент ${clientId} не найден` });
     }
- 
+
     const get = (col) => sheet.getCell(foundRow, col).value || sheet.getCell(defaultRow, col).value;
- 
+
     // === Прочитать данные клиента ===
     // A(0)=clientId B(1)=botName C(2)=primaryColor D(3)=googleDocId E(4)=claudeKey
-    // F(5)=tgToken G(6)=tgChatId H(7)=tgChatId (дублирование?) I(8)=status J(9)=avatarUrl
+    // F(5)=tgToken G(6)=tgChatId H(7)=tgChatId (доп) I(8)=status J(9)=avatarUrl
     // K(10)=tokenBalance L(11)=tokenTariff M(12)=tokenSpent N(13)=resetDate
     
-    const status = get(8);           // Статус (active/inactive)
-    const claudeKey = get(4);        // API ключ Claude
-    const googleDocId = get(3);      // Google Doc с промптом
-    const tgToken = get(5);          // Telegram токен
-    const tgChatId = get(6);         // Telegram группа ID
-    const avatarUrl = get(9);        // Аватарка
+    const status = get(8);           // I: Статус (active/inactive)
+    const claudeKey = get(4);        // E: API ключ Claude
+    const googleDocId = get(3);      // D: Google Doc с промптом
+    const tgToken = get(5);          // F: Telegram токен
+    const tgChatId = get(6);         // G: Telegram группа ID
+    const avatarUrl = get(9);        // J: Аватарка
     
     // Читаем токены для последующего использования в ШАГ 12
     const tokenBalance = get(10);    // K: Баланс (куплено токенов)
     const tokenTariff = get(11);     // L: Тариф (цена за 1 символ)
     let tokenSpent = get(12);        // M: Потрачено токенов
- 
+
     console.log(`✅ Клиент найден в строке ${foundRow}`);
     console.log(`💰 Токены: баланс=${tokenBalance}, тариф=${tokenTariff}, потрачено=${tokenSpent}`);
- 
+
     // === Проверка обязательных данных ===
     if (status !== 'active') {
       return res.status(403).json({ error: "Агент отключен" });
     }
- 
+
     if (!claudeKey) {
       return res.status(500).json({ error: "API ключ Claude не найден" });
     }
- 
+
     // ============================================================
     // ШАГ 4: Получить статус ИИ из Firebase
     // ============================================================
