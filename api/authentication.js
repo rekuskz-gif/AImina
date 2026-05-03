@@ -557,7 +557,7 @@ module.exports = async (req, res) => {
       tokenInfo: {
         spent: newSpent.toFixed(4),
         remaining: newRemaining.toFixed(4),
-        balance: tokenBalance
+        balance: tokenBalanceNum
       }
     });
 
