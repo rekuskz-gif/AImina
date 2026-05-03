@@ -200,8 +200,8 @@ module.exports = async (req, res) => {
     const tgToken = getByHeader('tgtoken');
     const tgChatId = getByHeader('tg chatid');
     const avatarUrl = getByHeader('avatarurl');
-    const tokenBalance = getByHeader('баланс/токены');
-    const tokenTariff = getByHeader('цена 1 символа');
+    const tokenBalance = getByHeader('балан/токены');
+    const tokenTariff = getByHeader('цена 1 сивола');
     let tokenSpent = getByHeader('потрачено токенов');
 
     console.log(`\n✅ Данные загружены`);
