@@ -247,64 +247,47 @@ module.exports = async (req, res) => {
     }
 
    // ============================================================
-    // ШАГ 12: Отправляем сообщение в Telegram
-    // ВАЖНО: В тексте ОБЯЗАТЕЛЬНО [clientId] и session:
-    // Это нужно чтобы менеджер мог сделать Reply юзеру!
+   // ============================================================
+    // ШАГ 16: Считаем токены — только целые числа!
+    // balance — сколько токенов осталось
+    // price per char — сколько токенов стоит 1 символ
+    // spent tokens — сколько токенов потрачено всего
     // ============================================================
-    console.log('\n📤 ШАГ 12: Отправляем в Telegram');
+    console.log('\n💰 ШАГ 16: Токены');
 
-    const lastMsg = messages[messages.length - 1];
-    const userText = lastMsg && lastMsg.role === 'user' ? lastMsg.content : null;
+    const tokenBalanceNum = parseInt(tokenBalance) || 0;
+    const tokenTariffNum  = parseInt(tokenTariff)  || 0;
+    const tokenSpentNum   = parseInt(tokenSpent)   || 0;
 
-    if (tgToken && tgChatId && userText) {
-      try {
-        const statusText = aiEnabled ? '🟢 ИИ активен' : '🔴 Менеджер отвечает';
+    // Считаем стоимость ответа в токенах
+    const costResponse = botText.length * tokenTariffNum;
 
-        // Баланс клиента — показываем менеджеру чтобы знал когда заканчивается
-        const balanceNum = parseFloat(tokenBalance) || 0;
-        const balanceText = tokenBalance ? `💰 Баланс: т.{balanceNum.toFixed(2)}$` : '';
+    // Новое значение потраченных токенов
+    const newSpent = tokenSpentNum + costResponse;
 
-        // ВАЖНО: [${clientId}] и session: нужны для Reply менеджера!
-        const tgText = `💬 Диалог #${dialogNum} [${clientId}]\n👤 Юзер: ${userText}\n\n${statusText}${balanceText ? '\n' + balanceText : ''}\nsession: ${sessionId}`;
+    // Новый остаток баланса
+    const newRemaining = tokenBalanceNum - costResponse;
 
-        const keyboard = aiEnabled ? [[
-          { text: '🔴 Выключить ИИ', callback_data: `off|${clientId}|${sessionId}` },
-          { text: '📜 История', callback_data: `history|${clientId}|${sessionId}` }
-        ]] : [[
-          { text: '🟢 Включить ИИ', callback_data: `on|${clientId}|${sessionId}` },
-          { text: '📜 История', callback_data: `history|${clientId}|${sessionId}` }
-        ]];
+    console.log(`  📊 Символов в ответе: ${botText.length}`);
+    console.log(`  💸 Стоимость: ${costResponse} токенов`);
+    console.log(`  📈 Потрачено всего: ${newSpent} токенов`);
+    console.log(`  💰 Остаток: ${newRemaining} токенов`);
 
-        const msgBody = {
-          chat_id: tgChatId,
-          text: tgText,
-          reply_markup: { inline_keyboard: keyboard }
-        };
+    try {
+      const spentCol   = headers['spent tokens'];
+      const balanceCol = headers['balance'];
 
-        // Добавляем тему только если есть
-        if (threadId) msgBody.message_thread_id = threadId;
-
-        const tgRes = await fetch(`https://api.telegram.org/bot${tgToken}/sendMessage`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(msgBody)
-        });
-        const tgData = await tgRes.json();
-        console.log(`  📥 Telegram: ${tgData.ok ? '✅ OK' : '❌ ' + tgData.description}`);
-
-      } catch (e) {
-        console.error(`  ❌ Ошибка Telegram: ${e.message}`);
+      // Сохраняем целые числа в таблицу
+      if (spentCol !== undefined) {
+        sheet.getCell(foundRow, spentCol).value = newSpent;
       }
-    }
-
-    // Если ИИ выключен — возвращаем null — менеджер ответит вручную
-    if (!aiEnabled) {
-      console.log('  ⏸️ ИИ выключен — менеджер отвечает');
-      return res.status(200).json({
-        text: null,
-        aiDisabled: true,
-        avatarUrl: avatarUrl
-      });
+      if (balanceCol !== undefined) {
+        sheet.getCell(foundRow, balanceCol).value = newRemaining;
+      }
+      await sheet.saveUpdatedCells();
+      console.log(`  ✅ Токены сохранены`);
+    } catch (e) {
+      console.error(`  ❌ Ошибка сохранения токенов: ${e.message}`);
     }
 
     // ============================================================
