@@ -1,7 +1,6 @@
 // ============================================================
 // ФАЙЛ: api/authentication.js
-// ВЕРСИЯ: v3.5 - С FALLBACK НА СТРОКУ 2
-// НАЗНАЧЕНИЕ: Если поле клиента пустое — берём из строки 2
+// ВЕРСИЯ: v3.6 - ЦЕЛЫЕ ЧИСЛА + БАЛАНС В ТЕЛЕГРАМ
 // ============================================================
 
 const { GoogleSpreadsheet } = require('google-spreadsheet');
@@ -120,10 +119,9 @@ module.exports = async (req, res) => {
 
     // ============================================================
     // ШАГ 6: Функция чтения с fallback на строку 2
-    // ВАЖНО: Строка 2 (индекс 1) — значения по умолчанию
-    // Если поле клиента пустое — берём оттуда
+    // Если поле клиента пустое — берём из строки 2
     // ============================================================
-    const DEFAULT_ROW = 1; // Строка 2 в таблице = индекс 1
+    const DEFAULT_ROW = 1;
 
     const getByHeader = (headerName) => {
       const lowerName = String(headerName).toLowerCase().trim();
@@ -134,16 +132,12 @@ module.exports = async (req, res) => {
         return null;
       }
 
-      // Сначала берём значение из строки клиента
       const clientValue = sheet.getCell(foundRow, col).value;
-
       if (clientValue) {
-        // Значение есть у клиента — используем его
         console.log(`  📖 ${headerName}: "${clientValue}" (из строки клиента)`);
         return clientValue;
       }
 
-      // Значение пустое — берём из строки 2 (по умолчанию)
       const defaultValue = sheet.getCell(DEFAULT_ROW, col).value;
       console.log(`  📖 ${headerName}: пусто → "${defaultValue}" (из строки 2)`);
       return defaultValue;
@@ -154,16 +148,16 @@ module.exports = async (req, res) => {
     // ============================================================
     console.log('\n📖 ШАГ 7: Читаем данные клиента');
 
-    const status        = getByHeader('status');
-    const botName       = getByHeader('bot name');
-    const claudeKey     = getByHeader('claudeapikey');
-    const googleDocId   = getByHeader('google docid');
-    const tgToken       = getByHeader('tgtoken');
-    const tgChatId      = getByHeader('tg chatid');
-    const avatarUrl     = getByHeader('avatarurl');
-    const tokenBalance  = getByHeader('balance');
-    const tokenTariff   = getByHeader('price per char');
-    let tokenSpent      = getByHeader('spent tokens');
+    const status       = getByHeader('status');
+    const botName      = getByHeader('bot name');
+    const claudeKey    = getByHeader('claudeapikey');
+    const googleDocId  = getByHeader('google docid');
+    const tgToken      = getByHeader('tgtoken');
+    const tgChatId     = getByHeader('tg chatid');
+    const avatarUrl    = getByHeader('avatarurl');
+    const tokenBalance = getByHeader('balance');
+    const tokenTariff  = getByHeader('price per char');
+    const tokenSpent   = getByHeader('spent tokens');
 
     // ============================================================
     // ШАГ 8: Проверяем обязательные данные
@@ -246,48 +240,63 @@ module.exports = async (req, res) => {
       console.log(`  ℹ️ threadId: ${threadId}`);
     }
 
-   // ============================================================
-   // ============================================================
-    // ШАГ 16: Считаем токены — только целые числа!
-    // balance — сколько токенов осталось
-    // price per char — сколько токенов стоит 1 символ
-    // spent tokens — сколько токенов потрачено всего
     // ============================================================
-    console.log('\n💰 ШАГ 16: Токены');
+    // ШАГ 12: Отправляем сообщение в Telegram
+    // ВАЖНО: [clientId] и session: нужны для Reply менеджера!
+    // ============================================================
+    console.log('\n📤 ШАГ 12: Отправляем в Telegram');
 
-    const tokenBalanceNum = parseInt(tokenBalance) || 0;
-    const tokenTariffNum  = parseInt(tokenTariff)  || 0;
-    const tokenSpentNum   = parseInt(tokenSpent)   || 0;
+    const lastMsg = messages[messages.length - 1];
+    const userText = lastMsg && lastMsg.role === 'user' ? lastMsg.content : null;
 
-    // Считаем стоимость ответа в токенах
-    const costResponse = botText.length * tokenTariffNum;
+    if (tgToken && tgChatId && userText) {
+      try {
+        const statusText = aiEnabled ? '🟢 ИИ активен' : '🔴 Менеджер отвечает';
 
-    // Новое значение потраченных токенов
-    const newSpent = tokenSpentNum + costResponse;
+        // Баланс клиента — показываем менеджеру
+        const balanceNum = parseInt(tokenBalance) || 0;
+        const balanceText = tokenBalance ? `💰 Баланс: ${balanceNum} токенов` : '';
 
-    // Новый остаток баланса
-    const newRemaining = tokenBalanceNum - costResponse;
+        // ВАЖНО: [${clientId}] и session: нужны для Reply менеджера!
+        const tgText = `💬 Диалог #${dialogNum} [${clientId}]\n👤 Юзер: ${userText}\n\n${statusText}${balanceText ? '\n' + balanceText : ''}\nsession: ${sessionId}`;
 
-    console.log(`  📊 Символов в ответе: ${botText.length}`);
-    console.log(`  💸 Стоимость: ${costResponse} токенов`);
-    console.log(`  📈 Потрачено всего: ${newSpent} токенов`);
-    console.log(`  💰 Остаток: ${newRemaining} токенов`);
+        const keyboard = aiEnabled ? [[
+          { text: '🔴 Выключить ИИ', callback_data: `off|${clientId}|${sessionId}` },
+          { text: '📜 История', callback_data: `history|${clientId}|${sessionId}` }
+        ]] : [[
+          { text: '🟢 Включить ИИ', callback_data: `on|${clientId}|${sessionId}` },
+          { text: '📜 История', callback_data: `history|${clientId}|${sessionId}` }
+        ]];
 
-    try {
-      const spentCol   = headers['spent tokens'];
-      const balanceCol = headers['balance'];
+        const msgBody = {
+          chat_id: tgChatId,
+          text: tgText,
+          reply_markup: { inline_keyboard: keyboard }
+        };
 
-      // Сохраняем целые числа в таблицу
-      if (spentCol !== undefined) {
-        sheet.getCell(foundRow, spentCol).value = newSpent;
+        if (threadId) msgBody.message_thread_id = threadId;
+
+        const tgRes = await fetch(`https://api.telegram.org/bot${tgToken}/sendMessage`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(msgBody)
+        });
+        const tgData = await tgRes.json();
+        console.log(`  📥 Telegram: ${tgData.ok ? '✅ OK' : '❌ ' + tgData.description}`);
+
+      } catch (e) {
+        console.error(`  ❌ Ошибка Telegram: ${e.message}`);
       }
-      if (balanceCol !== undefined) {
-        sheet.getCell(foundRow, balanceCol).value = newRemaining;
-      }
-      await sheet.saveUpdatedCells();
-      console.log(`  ✅ Токены сохранены`);
-    } catch (e) {
-      console.error(`  ❌ Ошибка сохранения токенов: ${e.message}`);
+    }
+
+    // Если ИИ выключен — менеджер отвечает вручную
+    if (!aiEnabled) {
+      console.log('  ⏸️ ИИ выключен — менеджер отвечает');
+      return res.status(200).json({
+        text: null,
+        aiDisabled: true,
+        avatarUrl: avatarUrl
+      });
     }
 
     // ============================================================
@@ -339,7 +348,7 @@ module.exports = async (req, res) => {
         'content-type': 'application/json'
       },
       body: JSON.stringify({
-        model: "claude-haiku-4-5-20251001", // Быстрая и дешёвая модель
+        model: "claude-haiku-4-5-20251001",
         max_tokens: 1024,
         system: systemPrompt,
         messages: cleanMessages
@@ -360,28 +369,40 @@ module.exports = async (req, res) => {
     console.log(`  ✅ Claude ответил (${botText.length} символов)`);
 
     // ============================================================
-    // ШАГ 16: Считаем токены
+    // ШАГ 16: Считаем токены — только целые числа!
+    // balance — сколько токенов осталось
+    // price per char — сколько токенов стоит 1 символ
+    // spent tokens — сколько токенов потрачено всего
     // ============================================================
     console.log('\n💰 ШАГ 16: Токены');
 
-    const tokenBalanceNum = parseFloat(tokenBalance) || 0;
-    const tokenTariffNum = parseFloat(tokenTariff) || 0;
-    const tokenSpentNum = parseFloat(tokenSpent) || 0;
-    const costResponse = botText.length * tokenTariffNum;
-    const newSpent = tokenSpentNum + costResponse;
-    const newRemaining = tokenBalanceNum - newSpent;
+    const tokenBalanceNum = parseInt(tokenBalance) || 0;
+    const tokenTariffNum  = parseInt(tokenTariff)  || 0;
+    const tokenSpentNum   = parseInt(tokenSpent)   || 0;
 
-    console.log(`  📊 Потрачено: ${newSpent.toFixed(4)}, Остаток: ${newRemaining.toFixed(4)}`);
+    // Стоимость ответа в токенах
+    const costResponse = botText.length * tokenTariffNum;
+
+    // Новое значение потраченных токенов
+    const newSpent = tokenSpentNum + costResponse;
+
+    // Новый остаток баланса
+    const newRemaining = tokenBalanceNum - costResponse;
+
+    console.log(`  📊 Символов в ответе: ${botText.length}`);
+    console.log(`  💸 Стоимость: ${costResponse} токенов`);
+    console.log(`  📈 Потрачено всего: ${newSpent} токенов`);
+    console.log(`  💰 Остаток: ${newRemaining} токенов`);
 
     try {
-      const spentCol = headers['spent tokens'];
+      const spentCol   = headers['spent tokens'];
       const balanceCol = headers['balance'];
 
       if (spentCol !== undefined) {
-        sheet.getCell(foundRow, spentCol).value = newSpent.toFixed(4);
+        sheet.getCell(foundRow, spentCol).value = newSpent;
       }
       if (balanceCol !== undefined) {
-        sheet.getCell(foundRow, balanceCol).value = newRemaining.toFixed(4);
+        sheet.getCell(foundRow, balanceCol).value = newRemaining;
       }
       await sheet.saveUpdatedCells();
       console.log(`  ✅ Токены сохранены`);
@@ -425,8 +446,8 @@ module.exports = async (req, res) => {
       aiDisabled: false,
       avatarUrl: avatarUrl || null,
       tokenInfo: {
-        spent: newSpent.toFixed(4),
-        remaining: newRemaining.toFixed(4),
+        spent: newSpent,
+        remaining: newRemaining,
         balance: tokenBalanceNum
       }
     });
