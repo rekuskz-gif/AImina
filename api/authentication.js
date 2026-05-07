@@ -243,6 +243,7 @@ module.exports = async (req, res) => {
     // ============================================================
     // ШАГ 12: Отправляем сообщение в Telegram
     // ВАЖНО: [clientId] и session: нужны для Reply менеджера!
+    // Показываем ВЕСЬ диалог чтобы менеджер видел контекст
     // ============================================================
     console.log('\n📤 ШАГ 12: Отправляем в Telegram');
 
@@ -257,8 +258,20 @@ module.exports = async (req, res) => {
         const balanceNum = parseInt(tokenBalance) || 0;
         const balanceText = tokenBalance ? `💰 Баланс: ${balanceNum} токенов` : '';
 
+        // Формируем весь диалог для контекста
+        // Показываем последние 10 сообщений чтобы не было слишком длинно
+        const last10 = messages.slice(-10);
+        let dialogText = '';
+        last10.forEach(msg => {
+          if (msg.role === 'user') {
+            dialogText += `👤 Юзер: ${msg.content}\n`;
+          } else if (msg.role === 'assistant') {
+            dialogText += `🤖 ИИ: ${msg.content}\n`;
+          }
+        });
+
         // ВАЖНО: [${clientId}] и session: нужны для Reply менеджера!
-        const tgText = `💬 Диалог #${dialogNum} [${clientId}]\n👤 Юзер: ${userText}\n\n${statusText}${balanceText ? '\n' + balanceText : ''}\nsession: ${sessionId}`;
+        const tgText = `💬 Диалог #${dialogNum} [${clientId}]\n\n${dialogText}\n${statusText}${balanceText ? '\n' + balanceText : ''}\nsession: ${sessionId}`;
 
         const keyboard = aiEnabled ? [[
           { text: '🔴 Выключить ИИ', callback_data: `off|${clientId}|${sessionId}` },
@@ -298,7 +311,7 @@ module.exports = async (req, res) => {
         avatarUrl: avatarUrl
       });
     }
-
+    
     // ============================================================
     // ШАГ 13: Читаем промпт из Google Doc
     // ============================================================
