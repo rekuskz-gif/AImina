@@ -246,7 +246,7 @@ module.exports = async (req, res) => {
       console.log(`  ℹ️ threadId: ${threadId}`);
     }
 
-    // ============================================================
+   // ============================================================
     // ШАГ 12: Отправляем сообщение в Telegram
     // ВАЖНО: В тексте ОБЯЗАТЕЛЬНО [clientId] и session:
     // Это нужно чтобы менеджер мог сделать Reply юзеру!
@@ -260,8 +260,12 @@ module.exports = async (req, res) => {
       try {
         const statusText = aiEnabled ? '🟢 ИИ активен' : '🔴 Менеджер отвечает';
 
+        // Баланс клиента — показываем менеджеру чтобы знал когда заканчивается
+        const balanceNum = parseFloat(tokenBalance) || 0;
+        const balanceText = tokenBalance ? `💰 Баланс: т.{balanceNum.toFixed(2)}$` : '';
+
         // ВАЖНО: [${clientId}] и session: нужны для Reply менеджера!
-        const tgText = `💬 Диалог #${dialogNum} [${clientId}]\n👤 Юзер: ${userText}\n\n${statusText}\nsession: ${sessionId}`;
+        const tgText = `💬 Диалог #${dialogNum} [${clientId}]\n👤 Юзер: ${userText}\n\n${statusText}${balanceText ? '\n' + balanceText : ''}\nsession: ${sessionId}`;
 
         const keyboard = aiEnabled ? [[
           { text: '🔴 Выключить ИИ', callback_data: `off|${clientId}|${sessionId}` },
