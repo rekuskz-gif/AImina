@@ -371,7 +371,7 @@ if (!threadId && tgToken && tgChatId) {
 console.log('\n📄 ШАГ 14: Читаем промпт');
 
 let systemPrompt = 'Ты полезный помощник. Отвечай кратко.';
-let whatsappPhone = '77771234567'; // 🎯 ПЕРЕМЕННАЯ ДЛЯ ВАТЦАПА
+// ❌ УДАЛИТЬ: let whatsappPhone = '77771234567';
 
 if (googleDocId) {
   try {
@@ -385,10 +385,10 @@ if (googleDocId) {
       .join('')
       .trim();
     
-    // 🎯 ПАРСИМ ВАТЦАП - ищем ЛЮБОЙ номер (10+ цифр)
+    // 🎯 ПАРСИМ ВАТЦАП - ОБНОВЛЯЕМ (без let!)
     const whatsappMatch = systemPrompt.match(/\d{10,}/);
     if (whatsappMatch) {
-      whatsappPhone = whatsappMatch[0];
+      whatsappPhone = whatsappMatch[0];  // ← БЕЗ let!
       console.log(`  📱 WhatsApp найден: ${whatsappPhone}`);
     }
     
