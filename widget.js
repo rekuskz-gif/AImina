@@ -128,7 +128,7 @@
         .amina-msg.bot { align-self: flex-start; background: white; color: #333; border-bottom-left-radius: 4px; box-shadow: 0 1px 2px rgba(0,0,0,0.1); }
         .amina-msg.user { align-self: flex-end; color: white; border-bottom-right-radius: 4px; }
         .amina-msg.manager { align-self: flex-start; background: #e3f2fd; color: #333; border-bottom-left-radius: 4px; box-shadow: 0 1px 2px rgba(0,0,0,0.1); border-left: 3px solid #2196F3; }
-        .amina-msg a { color: #25D366; font-weight: bold; text-decoration: underline; cursor: pointer; }
+        .amina-msg a { color: #007bff; font-weight: bold; text-decoration: underline; cursor: pointer; }
         .amina-msg a:hover { opacity: 0.8; }
         .amina-typing { display: flex; gap: 4px; align-self: flex-start; padding: 12px 16px; background: white; border-radius: 18px; border-bottom-left-radius: 4px; }
         .amina-typing span { width: 7px; height: 7px; background: #999; border-radius: 50%; animation: typingDot 1.4s infinite; }
