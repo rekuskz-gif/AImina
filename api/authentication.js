@@ -355,10 +355,10 @@ if (googleDocId) {
       .join('')
       .trim();
     
-    // 🎯 ПАРСИМ ВАТЦАП ИЗ ПРОМТА
-    const whatsappMatch = systemPrompt.match(/WhatsApp[:\s]+(\d{10,})/i);
+    // 🎯 ПАРСИМ ВАТЦАП - ищем ЛЮБОЙ номер (10+ цифр)
+    const whatsappMatch = systemPrompt.match(/\d{10,}/);
     if (whatsappMatch) {
-      whatsappPhone = whatsappMatch[1];
+      whatsappPhone = whatsappMatch[0];
       console.log(`  📱 WhatsApp найден: ${whatsappPhone}`);
     }
     
