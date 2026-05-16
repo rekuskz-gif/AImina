@@ -33,6 +33,13 @@ module.exports = async (req, res) => {
     const chatSheet = doc.sheetsByTitle['Chat window'];
     const authSheet = doc.sheetsByTitle['Authentication'];
 
+    if (!chatSheet) {
+      return res.status(500).json({ error: "Лист 'Chat window' не найден" });
+    }
+    if (!authSheet) {
+      return res.status(500).json({ error: "Лист 'Authentication' не найден" });
+    }
+
     await chatSheet.loadCells('A1:Z100');
     await authSheet.loadCells('A1:Z100');
 
@@ -63,6 +70,10 @@ module.exports = async (req, res) => {
     // Ищем клиента в Chat window
     // ============================================================
     const clientIdCol = chatHeaders['clientid'];
+    if (clientIdCol === undefined) {
+      return res.status(500).json({ error: "Колонка 'clientid' не найдена в Chat window" });
+    }
+
     let chatRow = null;
 
     for (let i = 1; i < chatSheet.rowCount; i++) {
@@ -73,13 +84,17 @@ module.exports = async (req, res) => {
     }
 
     if (chatRow === null) {
-      return res.status(404).json({ error: "Конфиг не найден" });
+      return res.status(404).json({ error: `Конфиг для клиента ${clientId} не найден в Chat window` });
     }
 
     // ============================================================
     // Ищем клиента в Authentication
     // ============================================================
     const authClientIdCol = authHeaders['clientid'];
+    if (authClientIdCol === undefined) {
+      return res.status(500).json({ error: "Колонка 'clientid' не найдена в Authentication" });
+    }
+
     let authRow = null;
 
     for (let i = 1; i < authSheet.rowCount; i++) {
