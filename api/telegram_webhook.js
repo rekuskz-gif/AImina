@@ -141,10 +141,10 @@ module.exports = async (req, res) => {
           })
         });
 
-        const historyRef = db.ref(`chats/${clientId}/${sessionId}`);
-        const snap = await historyRef.once('value');
-        const val = snap.val();
-        const history = Array.isArray(val) ? val : [];
+const messagesRef = db.ref(`chats/${clientId}/${sessionId}/messages`);
+const snap = await messagesRef.once('value');
+const val = snap.val();
+const history = Array.isArray(val) ? val : [];
         const last5 = history.slice(-5);
 
         console.log(`  ✅ История загружена: ${last5.length} сообщений`);
