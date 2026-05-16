@@ -227,26 +227,31 @@ module.exports = async (req, res) => {
     console.log(`  Диалог #${dialogNum}`);
 
 // ================================================================
-// ШАГ 11: Тема Telegram и сохраняем данные в Firebase
+// ШАГ 11: Telegram тема и Firebase данные
 // ================================================================
-console.log('\n📱 ШАГ 11: Тема Telegram');
+console.log('\n📱 ШАГ 11: Telegram тема и Firebase');
 
+// Получаем threadId из Firebase
 const threadIdRef = db.ref(`settings/${clientId}/${sessionId}/threadId`);
 const threadIdSnap = await threadIdRef.once('value');
 let threadId = threadIdSnap.val();
 
-// 🎯 СОХРАНЯЕМ НОМЕР ДИАЛОГА В FIREBASE
-const dialogNumRef = db.ref(`chats/${clientId}/${sessionId}/dialogNumber`);
-await dialogNumRef.set(dialogNum);
-console.log(`  ✅ Номер диалога #${dialogNum} сохранён в Firebase`);
+console.log(`  threadId: ${threadId || 'не создана'}`);
 
-// 🎯 СОХРАНЯЕМ WHATSAPP НОМЕР В FIREBASE
+// Сохраняем номер диалога в Firebase (для виджета)
+const chatDialogRef = db.ref(`chats/${clientId}/${sessionId}/dialogNumber`);
+await chatDialogRef.set(dialogNum);
+console.log(`  ✅ dialogNumber #${dialogNum} сохранён`);
+
+// Сохраняем WhatsApp номер в Firebase (для виджета)
 const whatsappRef = db.ref(`chats/${clientId}/${sessionId}/whatsappPhone`);
 await whatsappRef.set(whatsappPhone);
-console.log(`  ✅ WhatsApp ${whatsappPhone} сохранён в Firebase`);
+console.log(`  ✅ whatsappPhone ${whatsappPhone} сохранён`);
 
+// Создаём Telegram тему если её нет
 if (!threadId && tgToken && tgChatId) {
   try {
+    console.log(`  🔄 Создаём Telegram тему...`);
     const topicRes = await fetch(`https://api.telegram.org/bot${tgToken}/createForumTopic`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -255,17 +260,26 @@ if (!threadId && tgToken && tgChatId) {
         name: `Диалог #${dialogNum} [${clientId}]`,
       })
     });
+    
     const topicData = await topicRes.json();
+    
     if (topicData.ok) {
       threadId = topicData.result.message_thread_id;
       await threadIdRef.set(threadId);
-      console.log(`  ✅ Тема создана`);
+      console.log(`  ✅ Telegram тема создана (threadId: ${threadId})`);
+    } else {
+      console.warn(`  ⚠️ Ошибка Telegram: ${topicData.description}`);
     }
   } catch (e) {
-    console.error(`  Ошибка: ${e.message}`);
+    console.error(`  ❌ Ошибка создания темы: ${e.message}`);
+  }
+} else {
+  if (threadId) {
+    console.log(`  ✅ Telegram тема уже существует`);
+  } else {
+    console.log(`  ⚠️ Telegram не настроен`);
   }
 }
-    
 
     // ================================================================
     // ШАГ 12: Отправляем в Telegram
