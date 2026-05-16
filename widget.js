@@ -1,7 +1,7 @@
 // ██████████████████████████████████████████████████████████████████████████████
 // ██                                                                          ██
 // ██  ФАЙЛ: widget.js                                                         ██
-// ██  ВЕРСИЯ: 4.5 - ФИНАЛЬНАЯ С ПОЛНЫМИ ПОДПИСЯМИ                           ██
+// ██  ВЕРСИЯ: 4.6 - ИСПРАВЛЕННАЯ                                             ██
 // ██  НАЗНАЧЕНИЕ: Чат-виджет для вставки на веб-сайты                       ██
 // ██                                                                          ██
 // ██  ✅ Desktop версия: размеры ×2 (140×140, 760×1160)                       ██
@@ -11,6 +11,17 @@
 // ██  ✅ Firebase: сохранение истории, получение сообщений от менеджера       ██
 // ██  ✅ Claude AI: отправка сообщений и получение ответов                    ██
 // ██  ✅ Все элементы подписаны что за что отвечает                           ██
+// ██                                                                          ██
+// ██  ИСПРАВЛЕНИЯ v4.6:                                                       ██
+// ██  🔧 FIX 1: e.stopPropagation() на крестике - больше не открывается      ██
+// ██            панель сразу после закрытия                                  ██
+// ██  🔧 FIX 2: Firebase отписка через historyRef.off() вместо               ██
+// ██            historyUnsubscribe() - нет утечки слушателей                 ██
+// ██  🔧 FIX 3: closePanel() вынесена в отдельную функцию - нет              ██
+// ██            дублирования кода в трёх местах                              ██
+// ██  🔧 FIX 4: chatHistory.pop() заменён на splice() - удаляем точно        ██
+// ██            последнее сообщение юзера а не случайное                     ██
+// ██  🔧 FIX 5: footerText очищается от HTML тегов - защита от XSS           ██
 // ██                                                                          ██
 // ██  ПОДКЛЮЧЕНИЕ НА САЙТ:                                                    ██
 // ██  <script src="https://ai--mina.vercel.app/widget.js"                     ██
@@ -218,58 +229,23 @@
     // ██████████████████████████████████████████████████████████████████████████████
     // ██ РАЗДЕЛ 6: ФУНКЦИЯ loadConfigs()                                         ██
     // ██ НАЗНАЧЕНИЕ: Загружать конфиги клиента с сервера                         ██
-    // ██                                                                          ██
-    // ██ Конфиги берутся из Google Sheet через API                                ██
-    // ██ Google Sheet: 1DYCnjY4n5KsiOUC76YsaHUqOG3sJpbj72psQKFqNuIg              ██
-    // ██                                                                          ██
-    // ██ widget_config содержит настройки кнопки и облочки:                       ██
-    // ██ - botName = имя бота (пример: "Амина так и быть")                       ██
-    // ██ - avatarUrl = URL фото аватара (пример: "https://...")                  ██
-    // ██ - colorStart = начальный цвет градиента (пример: "#007bff")             ██
-    // ██ - colorEnd = конечный цвет градиента (пример: "#0056b3")                ██
-    // ██ - text1 = первый текст в облочке который печатается                     ██
-    // ██ - text2 = второй текст в облочке который печатается                     ██
-    // ██ - bgColor = цвет фона облочки (пример: "#ffffff")                       ██
-    // ██ - textColor = цвет текста в облочке (пример: "#333333")                 ██
-    // ██                                                                          ██
-    // ██ chat_config содержит настройки чата:                                     ██
-    // ██ - welcomeMsg = приветственное сообщение в чате                          ██
-    // ██ - footerText = текст внизу чата (обычно ссылка)                         ██
-    // ██ - footerUrl = URL ссылки в футере                                       ██
-    // ██ - footerColor = цвет текста футера                                      ██
-    // ██ - placeholder = текст подсказки в поле ввода (пример: "Напишите...")    ██
-    // ██                                                                          ██
-    // ██ Возвращает: { config, chatConfig }                                       ██
     // ██████████████████████████████████████████████████████████████████████████████
 
     async function loadConfigs() {
         try {
-            // Загружаем widget_config - настройки кнопки и облочки
             console.log('⚙️ Загружаем widget_config (кнопка и облочка)...');
-            
-            // Отправляем GET запрос к API
-            // ?clientId={clientId} = параметр в URL для указания какого клиента конфиг нужен
             const response = await fetch(`${backendUrl}/api/widget_config?clientId=${clientId}`);
-            
-            // Проверяем что запрос успешен (статус 200)
             if (!response.ok) throw new Error(`API ошибка: ${response.status}`);
-            
-            // Парсим ответ как JSON
             const config = await response.json();
             console.log('✅ widget_config загружен:', config);
             
-            // Загружаем chat_config - настройки чата
             console.log('⚙️ Загружаем chat_config (панель чата)...');
             const chatResponse = await fetch(`${backendUrl}/api/chat_config?clientId=${clientId}`);
-            
-            // Если запрос успешен - парсим JSON, иначе пустой объект
             const chatConfig = chatResponse.ok ? await chatResponse.json() : {};
             console.log('✅ chat_config загружен:', chatConfig);
             
-            // Возвращаем оба конфига
             return { config, chatConfig };
         } catch (e) {
-            // Если ошибка при загрузке - логируем и возвращаем пустые конфиги
             console.error('❌ Ошибка загрузки конфига:', e.message);
             return { config: {}, chatConfig: {} };
         }
@@ -277,793 +253,469 @@
 
     // ██████████████████████████████████████████████████████████████████████████████
     // ██ РАЗДЕЛ 7: CSS СТИЛИ - БАЗОВЫЕ (ОБЩИЕ ДЛЯ DESKTOP И MOBILE)              ██
-    // ██                                                                          ██
-    // ██ Здесь определены:                                                        ██
-    // ██ - Анимации (pulse, slideIn, slideOut, fadeInMsg, notifyPulse, typingDot) ██
-    // ██ - Основные стили элементов (кнопка, облочка, панель, сообщения)          ██
-    // ██ - Все правила которые одинаковые для обеих версий                        ██
-    // ██                                                                          ██
-    // ██ Размеры для Desktop и Mobile определены ниже (Раздел 8 и 9)              ██
     // ██████████████████████████████████████████████████████████████████████████████
 
     const baseStyles = `
-        /* ████████████████████████████████████████████████████████████ */
-        /* ██ АНИМАЦИИ                                                ██ */
-        /* ████████████████████████████████████████████████████████████ */
-        
-        /* АНИМАЦИЯ pulse: Пульс вокруг кнопки */
-        /* Волна расширяется от кнопки и исчезает каждые 2 секунды */
-        /* Используется для привлечения внимания к кнопке */
         @keyframes pulse {
-            0% { 
-                /* Начало анимации: волна в центре, видимая */
-                box-shadow: 0 0 0 0 rgba(0,0,0,0.2); 
-            }
-            70% { 
-                /* Середина: волна расширилась и начинает исчезать */
-                box-shadow: 0 0 0 15px rgba(0,0,0,0); 
-            }
-            100% { 
-                /* Конец: волна полностью исчезла */
-                box-shadow: 0 0 0 0 rgba(0,0,0,0); 
-            }
+            0% { box-shadow: 0 0 0 0 rgba(0,0,0,0.2); }
+            70% { box-shadow: 0 0 0 15px rgba(0,0,0,0); }
+            100% { box-shadow: 0 0 0 0 rgba(0,0,0,0); }
         }
         
-        /* АНИМАЦИЯ slideIn: Панель появляется справа налево */
-        /* Используется когда открываем панель чата */
         @keyframes slideIn {
-            from { 
-                /* Начало: панель вне экрана справа, невидимая */
-                transform: translateX(100%); 
-                opacity: 0; 
-            }
-            to { 
-                /* Конец: панель на месте, видимая */
-                transform: translateX(0); 
-                opacity: 1; 
-            }
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
         }
         
-        /* АНИМАЦИЯ slideOut: Панель исчезает вправо */
-        /* Используется когда закрываем панель чата */
         @keyframes slideOut {
-            from { 
-                /* Начало: панель на месте, видимая */
-                transform: translateX(0); 
-                opacity: 1; 
-            }
-            to { 
-                /* Конец: панель вне экрана справа, невидимая */
-                transform: translateX(100%); 
-                opacity: 0; 
-            }
+            from { transform: translateX(0); opacity: 1; }
+            to { transform: translateX(100%); opacity: 0; }
         }
         
-        /* АНИМАЦИЯ fadeInMsg: Сообщение появляется снизу */
-        /* Используется для каждого нового сообщения */
         @keyframes fadeInMsg {
-            from { 
-                /* Начало: сообщение ниже своего места, невидимое */
-                opacity: 0; 
-                transform: translateY(10px); 
-            }
-            to { 
-                /* Конец: сообщение на месте, видимое */
-                opacity: 1; 
-                transform: translateY(0); 
-            }
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
         }
         
-        /* АНИМАЦИЯ notifyPulse: Красный пульс при новых сообщениях */
-        /* Используется когда есть непрочитанные сообщения от менеджера */
         @keyframes notifyPulse {
-            0% { 
-                /* Начало: красная волна в центре, видимая */
-                box-shadow: 0 0 0 0 rgba(255,0,0,0.7); 
-            }
-            70% { 
-                /* Середина: красная волна расширилась и исчезает */
-                box-shadow: 0 0 0 15px rgba(255,0,0,0); 
-            }
-            100% { 
-                /* Конец: волна полностью исчезла */
-                box-shadow: 0 0 0 0 rgba(255,0,0,0); 
-            }
+            0% { box-shadow: 0 0 0 0 rgba(255,0,0,0.7); }
+            70% { box-shadow: 0 0 0 15px rgba(255,0,0,0); }
+            100% { box-shadow: 0 0 0 0 rgba(255,0,0,0); }
         }
         
-        /* АНИМАЦИЯ typingDot: Три точки печатают сообщение */
-        /* Точки прыгают по очереди когда бот пишет сообщение */
         @keyframes typingDot {
-            0%, 60%, 100% { 
-                /* Начало и конец: точка тусклая */
-                opacity: 0.3; 
-            }
-            30% { 
-                /* Середина: точка яркая (прыгает) */
-                opacity: 1; 
-            }
+            0%, 60%, 100% { opacity: 0.3; }
+            30% { opacity: 1; }
         }
         
-        /* ████████████████████████████████████████████████████████████ */
-        /* ██ КОНТЕЙНЕР ВИДЖЕТА                                        ██ */
-        /* ████████████████████████████████████████████████████████████ */
-        
-        /* .amina-widget = основной контейнер виджета */
-        /* Содержит кнопку и облочку */
-        /* Фиксирован внизу справа экрана и всегда видим */
         .amina-widget { 
-            position: fixed;            /* прилипает к экрану, не зависит от скроллинга */
-            z-index: 999999;            /* ✨ ВЫШЕ ВСЕХ виджетов (даже других чатов) */
-            display: flex;              /* элементы в ряд (flex container) */
-            align-items: center;        /* выравнивание по центру вертикально */
-            gap: 10px;                  /* расстояние 10px между кнопкой и облочкой */
+            position: fixed;
+            z-index: 999999;
+            display: flex;
+            align-items: center;
+            gap: 10px;
         }
         
-        /* ████████████████████████████████████████████████████████████ */
-        /* ██ КРУГЛАЯ КНОПКА С АВАТАРОМ                                ██ */
-        /* ████████████████████████████████████████████████████████████ */
-        
-        /* .amina-btn = круглая кнопка с аватаром */
-        /* Это основная кнопка которую видит пользователь */
         .amina-btn { 
-            border-radius: 50%;         /* 50% = круглая форма */
-            border: none;               /* без границы */
-            cursor: pointer;            /* курсор меняется на рука */
-            padding: 0;                 /* без внутренних отступов */
-            animation: pulse 2s infinite;  /* пульс волны каждые 2 секунды */
-            display: flex;              /* flex для центрирования аватара */
-            align-items: center;        /* центрирование по вертикали */
-            justify-content: center;    /* центрирование по горизонтали */
-            transition: transform 0.2s; /* плавное масштабирование при hover */
-            box-shadow: 0 4px 15px rgba(0,0,0,0.2); /* тень для объёма */
-            position: relative;         /* для позиционирования красного значка */
-            flex-shrink: 0;             /* не сжимается когда облочка длинная */
+            border-radius: 50%;
+            border: none;
+            cursor: pointer;
+            padding: 0;
+            animation: pulse 2s infinite;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: transform 0.2s;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            position: relative;
+            flex-shrink: 0;
         }
         
-        /* При наведении мышки кнопка становится больше на 5% */
-        .amina-btn:hover { 
-            transform: scale(1.05);     /* 1.05 = 105% от оригинального размера */
-        }
+        .amina-btn:hover { transform: scale(1.05); }
         
-        /* .amina-btn img = аватар внутри кнопки */
         .amina-btn img { 
-            border-radius: 50%;         /* 50% = круглое фото */
-            object-fit: cover;          /* обрезает фото чтобы было квадратным и заполнило круг */
+            border-radius: 50%;
+            object-fit: cover;
         }
         
-        /* .amina-badge = красный значок непрочитанных сообщений */
-        /* Показывается в правом верхнем углу кнопки (position: absolute, top: 0, right: 0) */
         .amina-badge { 
-            position: absolute;         /* позиционируется относительно .amina-btn */
-            top: 0;                     /* в верхнем крае */
-            right: 0;                   /* в правом крае */
-            background: red;            /* красный фон */
-            color: white;               /* белый текст */
-            border-radius: 50%;         /* 50% = круглый значок */
-            font-size: 12px;            /* размер текста */
-            font-weight: bold;          /* жирный текст */
-            align-items: center;        /* центрирование текста */
-            justify-content: center;    /* центрирование текста */
-            display: none;              /* скрыт по умолчанию (display: none) */
+            position: absolute;
+            top: 0;
+            right: 0;
+            background: red;
+            color: white;
+            border-radius: 50%;
+            font-size: 12px;
+            font-weight: bold;
+            align-items: center;
+            justify-content: center;
+            display: none;
         }
         
-        /* .amina-btn.has-message = стиль когда есть новые сообщения */
-        /* Класс has-message добавляется когда приходит сообщение от менеджера */
         .amina-btn.has-message { 
-            animation: notifyPulse 1s infinite !important;  /* красный пульс вместо обычного */
+            animation: notifyPulse 1s infinite !important;
         }
         
-        /* ████████████████████████████████████████████████████████████ */
-        /* ██ ОБЛОЧКА (LABEL)                                          ██ */
-        /* ████████████████████████████████████████████████████████████ */
-        
-        /* .amina-label = облочка с текстом рядом с кнопкой */
-        /* Показывает текст и имя бота */
         .amina-label { 
-            padding: 12px 16px;         /* внутренние отступы: 12px сверху/снизу, 16px слева/справа */
-            border-radius: 8px;         /* закругления углов на 8px */
-            box-shadow: 0 4px 12px rgba(0,0,0,0.1); /* тень для объёма */
-            font-size: 13px;            /* размер текста */
-            font-weight: bold;          /* жирный текст */
-            max-width: 200px;           /* максимальная ширина облочки */
-            opacity: 0;                 /* полностью прозрачна по умолчанию */
-            transition: all 0.5s;       /* плавное появление/исчезновение за 0.5 сек */
-            cursor: pointer;            /* курсор меняется на рука */
+            padding: 12px 16px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            font-size: 13px;
+            font-weight: bold;
+            max-width: 200px;
+            opacity: 0;
+            transition: all 0.5s;
+            cursor: pointer;
         }
         
-        /* .amina-label.visible = облочка видна */
-        /* Класс visible добавляется когда нужно показать облочку */
-        .amina-label.visible { 
-            opacity: 1;                 /* полностью видима */
-        }
+        .amina-label.visible { opacity: 1; }
         
-        /* .amina-name = название бота в облочке */
         .amina-name { 
-            font-size: 12px;            /* чуть меньше основного текста */
-            margin-top: 6px;            /* расстояние от текста (6px) */
+            font-size: 12px;
+            margin-top: 6px;
         }
         
-        /* ████████████████████████████████████████████████████████████ */
-        /* ██ ПАНЕЛЬ ЧАТА                                              ██ */
-        /* ████████████████████████████████████████████████████████████ */
-        
-        /* .amina-panel = основной контейнер панели чата */
-        /* Выезжает справа когда открываем чат */
         .amina-panel { 
-            position: fixed;            /* прилипает к экрану */
-            background: white;          /* белый фон */
-            box-shadow: 0 -4px 30px rgba(0,0,0,0.15); /* тень слева/справа */
-            z-index: 9999999;           /* ✨ ВЫШЕ ВСЕХ (почти максимум) */
-            display: flex;              /* flex для вертикального расположения элементов */
-            flex-direction: column;     /* элементы расположены вертикально (сверху вниз) */
-            overflow: hidden;           /* обрезаем содержимое за границами панели */
-            animation: slideIn 0.3s ease;  /* панель появляется со скоростью ease */
-            font-family: 'Segoe UI', Roboto, Arial, sans-serif;  /* шрифт для текста */
+            position: fixed;
+            background: white;
+            box-shadow: 0 -4px 30px rgba(0,0,0,0.15);
+            z-index: 9999999;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            animation: slideIn 0.3s ease;
+            font-family: 'Segoe UI', Roboto, Arial, sans-serif;
         }
         
-        /* .amina-panel.closing = стиль когда закрываем панель */
         .amina-panel.closing { 
-            animation: slideOut 0.3s ease forwards;  /* панель исчезает вправо */
+            animation: slideOut 0.3s ease forwards;
         }
         
-        /* .amina-panel-header = шапка панели */
-        /* Где показывается имя бота, аватар и кнопка X */
         .amina-panel-header { 
-            padding: 14px 16px;         /* внутренние отступы */
-            color: white;               /* белый текст */
-            display: flex;              /* flex для расположения элементов в ряд */
-            align-items: center;        /* выравнивание по центру */
-            gap: 10px;                  /* расстояние 10px между элементами */
-            flex-shrink: 0;             /* не сжимается при скроллинге */
-            position: relative;         /* ✨ для z-index */
-            z-index: 9999998;           /* ✨ выше содержимого панели */
-            pointer-events: auto;       /* ✨ клики работают */
+            padding: 14px 16px;
+            color: white;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-shrink: 0;
+            position: relative;
+            z-index: 9999998;
+            pointer-events: auto;
         }
         
-        /* .amina-panel-header img = аватар в шапке панели */
         .amina-panel-header img { 
-            border-radius: 50%;         /* 50% = круглое фото */
-            border: 2px solid rgba(255,255,255,0.4); /* белая граница прозрачная */
-            object-fit: cover;          /* обрезает фото */
-            flex-shrink: 0;             /* не сжимается */
+            border-radius: 50%;
+            border: 2px solid rgba(255,255,255,0.4);
+            object-fit: cover;
+            flex-shrink: 0;
         }
         
-        /* .amina-panel-header-name = имя бота в шапке */
         .amina-panel-header-name { 
-            font-weight: bold;          /* жирный текст */
-            flex: 1;                    /* занимает оставшееся место в flex контейнере */
+            font-weight: bold;
+            flex: 1;
         }
         
-        /* .amina-panel-close = кнопка X закрытия панели */
         .amina-panel-close { 
-            background: none;           /* без фона */
-            border: none;               /* без границы */
-            color: white;               /* белая икона */
-            cursor: pointer;            /* курсор - рука */
-            padding: 0;                 /* без отступов */
-            opacity: 0.8;               /* 80% видимости (чуть прозрачная) */
-            transition: opacity 0.2s;   /* плавное изменение видимости */
-            font-size: 22px;            /* размер иконы крупный */
-            pointer-events: auto;       /* ✨ УБЕДИТЬСЯ что клики работают */
-            z-index: 9999999;           /* ✨ ВЫШЕ ВСЕГО */
+            background: none;
+            border: none;
+            color: white;
+            cursor: pointer;
+            padding: 0;
+            opacity: 0.8;
+            transition: opacity 0.2s;
+            font-size: 22px;
+            pointer-events: auto;
+            z-index: 9999999;
         }
         
-        /* При наведении кнопка становится полностью видимой */
-        .amina-panel-close:hover { 
-            opacity: 1;                 /* 100% видимости */
-        }
+        .amina-panel-close:hover { opacity: 1; }
         
-        /* ████████████████████████████████████████████████████████████ */
-        /* ██ СПИСОК СООБЩЕНИЙ                                          ██ */
-        /* ████████████████████████████████████████████████████████████ */
-        
-        /* .amina-messages = контейнер со всеми сообщениями */
-        /* Имеет скроллбар для прокрутки когда много сообщений */
         .amina-messages { 
-            flex: 1;                    /* занимает максимум доступного места */
-            overflow-y: auto;           /* скроллит вертикально если контент выходит за границы */
-            padding: 15px;              /* отступы по краям 15px */
-            display: flex;              /* flex для расположения сообщений */
-            flex-direction: column;     /* сообщения расположены вертикально */
-            gap: 10px;                  /* расстояние 10px между сообщениями */
-            background: #f0f2f5;        /* серый фон */
+            flex: 1;
+            overflow-y: auto;
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            background: #f0f2f5;
         }
         
-        /* .amina-msg = одно сообщение (пузырь) */
         .amina-msg { 
-            padding: 10px 14px;         /* внутренние отступы */
-            border-radius: 18px;        /* закругленный "пузырь" */
-            max-width: 80%;             /* максимальная ширина 80% ширины панели */
-            font-size: 14px;            /* размер текста */
-            line-height: 1.4;           /* высота строки 1.4 от размера шрифта */
-            word-wrap: break-word;      /* переносит длинные слова в новую строку */
-            animation: fadeInMsg 0.3s ease;  /* появляется снизу */
+            padding: 10px 14px;
+            border-radius: 18px;
+            max-width: 80%;
+            font-size: 14px;
+            line-height: 1.4;
+            word-wrap: break-word;
+            animation: fadeInMsg 0.3s ease;
         }
         
-        /* .amina-msg.bot = сообщение БОТА */
-        /* Белое, слева, острый угол слева (в сторону откуда пришло) */
         .amina-msg.bot { 
-            align-self: flex-start;     /* выравнивается влево (flex-start) */
-            background: white;          /* белый пузырь */
-            color: #333;                /* тёмный текст */
-            border-bottom-left-radius: 4px;  /* острый угол слева внизу */
-            box-shadow: 0 1px 2px rgba(0,0,0,0.1); /* лёгкая тень */
+            align-self: flex-start;
+            background: white;
+            color: #333;
+            border-bottom-left-radius: 4px;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.1);
         }
         
-        /* .amina-msg.user = сообщение ЮЗЕРА */
-        /* Цветное (из конфига), справа, острый угол справа */
         .amina-msg.user { 
-            align-self: flex-end;       /* выравнивается вправо (flex-end) */
-            color: white;               /* белый текст */
-            border-bottom-right-radius: 4px;  /* острый угол справа внизу */
+            align-self: flex-end;
+            color: white;
+            border-bottom-right-radius: 4px;
         }
         
-        /* .amina-msg.manager = сообщение МЕНЕДЖЕРА */
-        /* Синее, слева, острый угол слева, синяя полоса слева */
         .amina-msg.manager { 
-            align-self: flex-start;     /* выравнивается влево */
-            background: #e3f2fd;        /* светлый синий пузырь */
-            color: #333;                /* тёмный текст */
-            border-bottom-left-radius: 4px;  /* острый угол слева */
-            box-shadow: 0 1px 2px rgba(0,0,0,0.1); /* лёгкая тень */
-            border-left: 3px solid #2196F3;  /* синяя полоса слева (указатель) */
+            align-self: flex-start;
+            background: #e3f2fd;
+            color: #333;
+            border-bottom-left-radius: 4px;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+            border-left: 3px solid #2196F3;
         }
         
-        /* ████████████████████████████████████████████████████████████ */
-        /* ██ АНИМАЦИЯ ПЕЧАТИ (ТРИ ТОЧКИ)                              ██ */
-        /* ████████████████████████████████████████████████████████████ */
-        
-        /* .amina-typing = три точки "бот печатает" */
         .amina-typing { 
-            display: flex;              /* flex для расположения точек в ряд */
-            gap: 4px;                   /* расстояние 4px между точками */
-            align-self: flex-start;     /* слева как сообщение бота */
-            padding: 12px 16px;         /* внутренние отступы */
-            background: white;          /* белый пузырь */
-            border-radius: 18px;        /* закругленный пузырь */
-            border-bottom-left-radius: 4px;  /* острый угол слева внизу */
+            display: flex;
+            gap: 4px;
+            align-self: flex-start;
+            padding: 12px 16px;
+            background: white;
+            border-radius: 18px;
+            border-bottom-left-radius: 4px;
         }
         
-        /* .amina-typing span = одна точка */
         .amina-typing span { 
-            width: 7px;                 /* диаметр 7px */
-            height: 7px;                /* диаметр 7px */
-            background: #999;           /* серая точка */
-            border-radius: 50%;         /* 50% = круглая */
-            animation: typingDot 1.4s infinite;  /* прыгает каждые 1.4 сек */
+            width: 7px;
+            height: 7px;
+            background: #999;
+            border-radius: 50%;
+            animation: typingDot 1.4s infinite;
         }
         
-        /* Вторая точка прыгает позже первой на 0.2 сек */
-        .amina-typing span:nth-child(2) { 
-            animation-delay: 0.2s;      /* задержка начала анимации */
-        }
+        .amina-typing span:nth-child(2) { animation-delay: 0.2s; }
+        .amina-typing span:nth-child(3) { animation-delay: 0.4s; }
         
-        /* Третья точка прыгает позже второй на 0.4 сек */
-        .amina-typing span:nth-child(3) { 
-            animation-delay: 0.4s;      /* задержка начала анимации */
-        }
-        
-        /* ████████████████████████████████████████████████████████████ */
-        /* ██ ПОЛЕ ВВОДА                                               ██ */
-        /* ████████████████████████████████████████████████████████████ */
-        
-        /* .amina-input-area = контейнер с текстовым полем и кнопкой отправки */
         .amina-input-area { 
-            padding: 12px;              /* отступы */
-            background: white;          /* белый фон */
-            display: flex;              /* flex для расположения input и кнопки в ряд */
-            gap: 8px;                   /* расстояние 8px между ними */
-            border-top: 1px solid #eee; /* граница сверху */
-            flex-shrink: 0;             /* не сжимается при прокрутке */
+            padding: 12px;
+            background: white;
+            display: flex;
+            gap: 8px;
+            border-top: 1px solid #eee;
+            flex-shrink: 0;
         }
         
-        /* .amina-input = текстовое поле для ввода сообщения */
         .amina-input { 
-            flex: 1;                    /* занимает максимум места в контейнере */
-            padding: 10px 14px;         /* внутренние отступы */
-            border: 1px solid #ddd;     /* серая граница */
-            border-radius: 22px;        /* закругления углов (пилюля) */
-            outline: none;              /* без синей обводки при фокусе */
-            font-size: 14px;            /* размер текста */
-            font-family: inherit;       /* наследует шрифт из родителя */
-            transition: border-color 0.2s;  /* плавное изменение цвета границы */
+            flex: 1;
+            padding: 10px 14px;
+            border: 1px solid #ddd;
+            border-radius: 22px;
+            outline: none;
+            font-size: 14px;
+            font-family: inherit;
+            transition: border-color 0.2s;
         }
         
-        /* При клике на input - граница становится синей */
-        .amina-input:focus { 
-            border-color: #007bff;      /* синяя граница */
-        }
+        .amina-input:focus { border-color: #007bff; }
         
-        /* .amina-send = кнопка отправки (стрелка →) */
         .amina-send { 
-            border: none;               /* без границы */
-            color: white;               /* белая икона */
-            border-radius: 50%;         /* 50% = круглая кнопка */
-            cursor: pointer;            /* курсор - рука */
-            display: flex;              /* flex для центрирования иконы */
-            align-items: center;        /* центрирование по вертикали */
-            justify-content: center;    /* центрирование по горизонтали */
-            font-size: 16px;            /* размер иконы */
-            flex-shrink: 0;             /* не сжимается */
-            transition: opacity 0.2s;   /* плавное изменение видимости */
-            width: 38px;                /* размер (будет изменён в Desktop/Mobile) */
-            height: 38px;               /* размер */
+            border: none;
+            color: white;
+            border-radius: 50%;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+            flex-shrink: 0;
+            transition: opacity 0.2s;
+            width: 38px;
+            height: 38px;
         }
         
-        /* При наведении кнопка становится чуть виднее */
-        .amina-send:hover { 
-            opacity: 0.9;               /* 90% видимости */
-        }
+        .amina-send:hover { opacity: 0.9; }
+        .amina-send:disabled { opacity: 0.5; cursor: not-allowed; }
         
-        /* При отключенной кнопке (отправляется сообщение) */
-        .amina-send:disabled { 
-            opacity: 0.5;               /* 50% видимости */
-            cursor: not-allowed;        /* курсор - рука с запретом */
-        }
-        
-        /* ████████████████████████████████████████████████████████████ */
-        /* ██ ФУТЕР ПАНЕЛИ                                             ██ */
-        /* ████████████████████████████████████████████████████████████ */
-        
-        /* .amina-footer = ссылка внизу панели (брендирование) */
         .amina-footer { 
-            text-align: center;         /* текст по центру */
-            padding: 6px;               /* минимальные отступы */
-            font-size: 11px;            /* маленький шрифт */
-            background: white;          /* белый фон */
-            flex-shrink: 0;             /* не сжимается при скроллинге */
+            text-align: center;
+            padding: 6px;
+            font-size: 11px;
+            background: white;
+            flex-shrink: 0;
         }
         
-        /* .amina-footer a = ссылка в футере */
         .amina-footer a { 
-            text-decoration: none;      /* без подчеркивания */
-            transition: opacity 0.2s;   /* плавное изменение видимости */
+            text-decoration: none;
+            transition: opacity 0.2s;
         }
         
-        /* При наведении на ссылку */
-        .amina-footer a:hover { 
-            opacity: 0.7;               /* 70% видимости */
-        }
+        .amina-footer a:hover { opacity: 0.7; }
     `;
 
     // ██████████████████████████████████████████████████████████████████████████████
-    // ██ РАЗДЕЛ 8: CSS СТИЛИ - DESKTOP (Десктопная версия)                       ██
-    // ██                                                                          ██
-    // ██ Размеры УВЕЛИЧЕНЫ НА 100% от оригинала:                                  ██
-    // ██ - Кнопка: 70×70 → 140×140                                                ██
-    // ██ - Панель: 380×580 → 760×1160                                             ██
-    // ██ - Волна: 230px (×2 от шарика)                                            ██
+    // ██ РАЗДЕЛ 8: CSS СТИЛИ - DESKTOP                                           ██
     // ██████████████████████████████████████████████████████████████████████████████
 
     const desktopStyles = `
-        /* ████████████████████████████████████████████████████████████ */
-        /* ██ РАЗМЕРЫ DESKTOP (Увеличены на 100%)                     ██ */
-        /* ████████████████████████████████████████████████████████████ */
-        
-        /* Позиция виджета на десктопе - правый нижний угол */
         .amina-widget { 
-            bottom: 20px;              /* 20px снизу экрана */
-            right: 20px;               /* 20px справа экрана */
+            bottom: 20px;
+            right: 20px;
         }
         
-        /* ╔══════════════════════════════════════════════════════════╗ */
-        /* ║ КНОПКА DESKTOP: 70×70 → 140×140 (×2)                   ║ */
-        /* ╚══════════════════════════════════════════════════════════╝ */
         .amina-btn { 
-            width: 140px;              /* двойной размер: 70 × 2 = 140 */
-            height: 140px;             /* двойной размер: 70 × 2 = 140 */
+            width: 140px;
+            height: 140px;
         }
         
-        /* АВАТАР внутри кнопки: 58×58 → 116×116 (×2) */
         .amina-btn img { 
-            width: 116px;              /* двойной размер: 58 × 2 = 116 */
-            height: 116px;             /* двойной размер: 58 × 2 = 116 */
+            width: 116px;
+            height: 116px;
         }
         
-        /* КРАСНЫЙ ЗНАЧОК: 20×20 → 40×40 (×2) */
         .amina-badge { 
-            width: 40px;               /* двойной размер: 20 × 2 = 40 */
-            height: 40px;              /* двойной размер: 20 × 2 = 40 */
+            width: 40px;
+            height: 40px;
         }
         
-        /* ╔══════════════════════════════════════════════════════════╗ */
-        /* ║ ВОЛНА DESKTOP: 92px (уменьшена на 60% от 230px)        ║ */
-        /* ║ 230px - 60% = 230 × 0.4 = 92px                         ║ */
-        /* ╚══════════════════════════════════════════════════════════╝ */
-        /* Волна уменьшена на 60% для более спокойного эффекта */
         @keyframes pulse-desktop {
-            0% { 
-                /* Начало: волна в центре, видимая */
-                box-shadow: 0 0 0 0 rgba(0,0,0,0.2); 
-            }
-            70% { 
-                /* Середина: волна расширилась на 92px (уменьшено на 60%) */
-                /* Расчёт: 230px - 60% = 92px */
-                box-shadow: 0 0 0 92px rgba(0,0,0,0); 
-            }
-            100% { 
-                /* Конец: волна исчезла */
-                box-shadow: 0 0 0 0 rgba(0,0,0,0); 
-            }
+            0% { box-shadow: 0 0 0 0 rgba(0,0,0,0.2); }
+            70% { box-shadow: 0 0 0 92px rgba(0,0,0,0); }
+            100% { box-shadow: 0 0 0 0 rgba(0,0,0,0); }
         }
         
-        /* Применяем кастомную волну для десктопа */
         .amina-btn {
             animation: pulse-desktop 2s infinite !important;
         }
         
-        /* ╔══════════════════════════════════════════════════════════╗ */
-        /* ║ ПАНЕЛЬ ЧАТА DESKTOP: 380×580 → 760×1160 (×2)            ║ */
-        /* ╚══════════════════════════════════════════════════════════╝ */
         .amina-panel { 
-            bottom: 100px;             /* выше кнопки на 100px (кнопка 140px + зазор 100px) */
-            right: 20px;               /* выравнен с кнопкой по правому краю */
-            width: 760px;              /* двойной размер: 380 × 2 = 760 */
-            height: 1160px;            /* двойной размер: 580 × 2 = 1160 */
-            border-radius: 16px;       /* скругления углов */
+            bottom: 100px;
+            right: 20px;
+            width: 760px;
+            height: 1160px;
+            border-radius: 16px;
         }
         
-        /* ИМЯ БОТА в шапке: 15px → 30px (×2) */
-        .amina-panel-header-name { 
-            font-size: 30px;           /* двойной размер: 15 × 2 = 30 */
-        }
+        .amina-panel-header-name { font-size: 30px; }
         
-        /* АВАТАР в шапке: 36×36 → 72×72 (×2) */
         .amina-panel-header img { 
-            width: 72px;               /* двойной размер: 36 × 2 = 72 */
-            height: 72px;              /* двойной размер: 36 × 2 = 72 */
+            width: 72px;
+            height: 72px;
         }
     `;
 
     // ██████████████████████████████████████████████████████████████████████████████
-    // ██ РАЗДЕЛ 9: CSS СТИЛИ - MOBILE (Мобильная версия)                         ██
-    // ██                                                                          ██
-    // ██ Размеры УВЕЛИЧЕНЫ НА 100% + КНОПКА НА +15%:                              ██
-    // ██ - Кнопка: 50×50 → 100×100 → 115×115 (+15%)                               ██
-    // ██ - Волна: 230px (×2 от шарика 115/2 = 57.5, но 230 визуально хорошо)      ██
-    // ██ - Облочка видна: 110px → 220px                                           ██
-    // ██ - Панель: на весь экран (90vh)                                           ██
+    // ██ РАЗДЕЛ 9: CSS СТИЛИ - MOBILE                                            ██
     // ██████████████████████████████████████████████████████████████████████████████
 
     const mobileStyles = `
-        /* ████████████████████████████████████████████████████████████ */
-        /* ██ РАЗМЕРЫ MOBILE (Увеличены на 100% + кнопка +15%)        ██ */
-        /* ████████████████████████████████████████████████████████████ */
-        
-        /* Позиция виджета на мобилке - правый нижний угол, ближе к краю */
         .amina-widget { 
-            bottom: 10px;              /* ближе к краю экрана */
-            right: 10px;               /* ближе к краю экрана */
+            bottom: 10px;
+            right: 10px;
         }
         
-        /* ╔══════════════════════════════════════════════════════════╗ */
-        /* ║ КНОПКА MOBILE: 150×150 → 128×128 (-15%)                 ║ */
-        /* ║ Расчёт: 150 × 0.85 = 127.5 ≈ 128px                      ║ */
-        /* ╚══════════════════════════════════════════════════════════╝ */
-        /* Весь шарик уменьшен на 15% */
         .amina-btn { 
-            width: 128px;              /* 150 - 15% = 128px */
-            height: 128px;             /* 150 - 15% = 128px */
+            width: 128px;
+            height: 128px;
         }
         
-        /* АВАТАР внутри кнопки: 126×126 → 107×107 (-15%) */
-        /* Расчёт: 107 × 0.85 = 90.95 ≈ 91px (или оставить 107 если нужно) */
         .amina-btn img { 
-            width: 107px;              /* уменьшен на 15% */
-            height: 107px;             /* уменьшен на 15% */
+            width: 107px;
+            height: 107px;
         }
         
-        /* КРАСНЫЙ ЗНАЧОК: 48×48 → 41×41 (-15%) */
-        /* Расчёт: 48 × 0.85 = 40.8 ≈ 41px */
         .amina-badge { 
-            width: 41px;               /* 48 - 15% = 41px */
-            height: 41px;              /* 48 - 15% = 41px */
-            font-size: 16px;           /* уменьшен немного */
+            width: 41px;
+            height: 41px;
+            font-size: 16px;
         }
         
-        /* ╔══════════════════════════════════════════════════════════╗ */
-        /* ║ ВОЛНА MOBILE: 92px (уменьшена на 60% от 230px)          ║ */
-        /* ║ Расчёт: 230px - 60% = 230 × 0.4 = 92px                 ║ */
-        /* ╚══════════════════════════════════════════════════════════╝ */
-        /* На мобилке волна уменьшена на 60% для спокойного эффекта */
         @keyframes pulse-mobile {
-            0% { 
-                /* Начало: волна в центре, видимая */
-                box-shadow: 0 0 0 0 rgba(0,0,0,0.2); 
-            }
-            70% { 
-                /* Середина: волна расширилась на 92px (уменьшено на 60%) */
-                box-shadow: 0 0 0 92px rgba(0,0,0,0); 
-            }
-            100% { 
-                /* Конец: волна исчезла */
-                box-shadow: 0 0 0 0 rgba(0,0,0,0); 
-            }
+            0% { box-shadow: 0 0 0 0 rgba(0,0,0,0.2); }
+            70% { box-shadow: 0 0 0 92px rgba(0,0,0,0); }
+            100% { box-shadow: 0 0 0 0 rgba(0,0,0,0); }
         }
         
-        /* Применяем кастомную волну для мобилки */
         .amina-btn {
             animation: pulse-mobile 2s infinite !important;
         }
         
-        /* ╔══════════════════════════════════════════════════════════╗ */
-        /* ║ ОБЛОЧКА MOBILE: 110px → 220px (×2) + видна!             ║ */
-        /* ╚══════════════════════════════════════════════════════════╝ */
-        /* Облочка видна на мобилке (в отличие от оригинальной версии) */
         .amina-label { 
-            max-width: 220px;          /* двойной размер: 110 × 2 = 220px */
-            font-size: 16px;           /* 11px × 1.45 ≈ 16px (видимее на мобилке) */
-            padding: 12px 16px;        /* увеличены отступы */
+            max-width: 220px;
+            font-size: 16px;
+            padding: 12px 16px;
         }
         
-        /* ИМЯ В ОБЛОЧКЕ: 10px → 14px (больше видимый) */
-        .amina-label .amina-name { 
-            font-size: 14px;           /* 10px + 40% для лучшей видимости на мобилке */
-        }
+        .amina-label .amina-name { font-size: 14px; }
         
-        /* ╔══════════════════════════════════════════════════════════╗ */
-        /* ║ ПАНЕЛЬ ЧАТА MOBILE: на весь экран + отступы справа/слева ║ */
-        /* ║ Отступы: 16px (стандарт индустрии как WhatsApp, Facebook) ║ */
-        /* ╚══════════════════════════════════════════════════════════╝ */
-        /* На мобилке панель выезжает от дна экрана с отступами по сторонам */
         .amina-panel { 
-            bottom: 0;                 /* прямо от дна экрана */
-            right: 8px;               /* ← ОТСТУП СПРАВА 8px (стандарт) */
-            left: 8px;                /* ← ОТСТУП СЛЕВА 8px (стандарт) */
-            top: auto;                 /* не переопределяем top */
-            width: auto;               /* автоматическая ширина (учитывает left и right) */
-            height: 100%;              /* на всю высоту экрана */
-            max-height: 90vh;          /* но не выше 90% высоты видимой области */
-            /* 90vh = 90% viewport height (высота окна браузера) */
-            /* Оставляем 10% сверху чтобы пользователь мог видеть содержимое страницы */
-            border-radius: 16px 16px 0 0;  /* скругления только сверху (верхние углы) */
+            bottom: 0;
+            right: 8px;
+            left: 8px;
+            top: auto;
+            width: auto;
+            height: 100%;
+            max-height: 90vh;
+            border-radius: 16px 16px 0 0;
         }
         
-        /* ИМЯ БОТА в шапке: 14px → 18px (больше на мобилке) */
-        .amina-panel-header-name { 
-            font-size: 18px;           /* 14px + 29% = 18px для лучшей читаемости */
-        }
+        .amina-panel-header-name { font-size: 18px; }
         
-        /* АВАТАР в шапке: 32×32 → 64×64 (×2) */
         .amina-panel-header img { 
-            width: 64px;               /* двойной размер: 32 × 2 = 64px */
-            height: 64px;              /* двойной размер: 32 × 2 = 64px */
+            width: 64px;
+            height: 64px;
         }
         
-        /* INPUT на мобилке: 16px → 18px (легче печатать) */
-        .amina-input { 
-            font-size: 18px;           /* 16px + 12% = 18px для удобства печати на мобилке */
-            /* Большой шрифт в input не вызывает автоматический zoom на iOS */
-        }
+        .amina-input { font-size: 18px; }
     `;
 
     // ██████████████████████████████████████████████████████████████████████████████
     // ██ РАЗДЕЛ 10: ГЛАВНАЯ ФУНКЦИЯ initMina()                                   ██
-    // ██ НАЗНАЧЕНИЕ: Инициализировать весь виджет                                ██
-    // ██                                                                          ██
-    // ██ Выполняются все шаги инициализации:                                      ██
-    // ██ 1. Firebase инициализация                                                ██
-    // ██ 2. Загрузка конфигов                                                     ██
-    // ██ 3. Загрузка истории сообщений                                            ██
-    // ██ 4. Применение стилей                                                    ██
-    // ██ 5. Создание HTML элементов                                              ██
-    // ██ 6. Подключение обработчиков событий                                     ██
-    // ██ 7. Запуск анимаций                                                      ██
     // ██████████████████████████████████████████████████████████████████████████████
 
     async function initMina() {
         try {
             console.log('🚀 Начинаем инициализацию виджета...');
             
-            // ═══════════════════════════════════════════════════════════════════
-            // ШАГ 1: Инициализируем Firebase для сохранения истории
-            // ═══════════════════════════════════════════════════════════════════
+            // ШАГ 1: Firebase
             console.log('ЭТАП 1: Инициализация Firebase...');
             const db = await initFirebase();
             if (!db) throw new Error('Firebase инициализация не удалась');
 
-            // ═══════════════════════════════════════════════════════════════════
-            // ШАГ 2: Загружаем конфиги клиента из Google Sheet
-            // ═══════════════════════════════════════════════════════════════════
+            // ШАГ 2: Конфиги
             console.log('ЭТАП 2: Загрузка конфигов...');
             const { config, chatConfig } = await loadConfigs();
             
-            // ═══════════════════════════════════════════════════════════════════
-            // ШАГ 3: Получаем или создаём sessionId (уникальный ID браузера)
-            // ═══════════════════════════════════════════════════════════════════
+            // ШАГ 3: sessionId
             console.log('ЭТАП 3: Получение sessionId...');
             const sessionId = getSessionId();
             
-            // ═══════════════════════════════════════════════════════════════════
-            // ШАГ 4: Создаём ссылку на историю в Firebase
-            // ═══════════════════════════════════════════════════════════════════
+            // ШАГ 4: Ссылка на историю в Firebase
             // Путь: chats/{clientId}/{sessionId}
-            // Пример: chats/mina_001/user_abc123_1777784054357
-            // Эта ссылка используется для чтения и записи истории
             const historyRef = db.ref(`chats/${clientId}/${sessionId}`);
             console.log(`📝 Firebase путь: chats/${clientId}/${sessionId}`);
 
-            // ═══════════════════════════════════════════════════════════════════
-            // ШАГ 5: Загружаем существующую историю сообщений
-            // ═══════════════════════════════════════════════════════════════════
+            // ШАГ 5: Загрузка истории
             console.log('ЭТАП 4: Загрузка истории сообщений...');
-            
-            // chatHistory = массив сообщений
-            // Каждое сообщение = { role: 'user'/'assistant', content: 'текст', fromManager?: true }
             let chatHistory = [];
-            
-            // snapshot = снимок данных из Firebase
             const snapshot = await historyRef.once('value');
             
             if (snapshot.exists()) {
-                // Если история существует в Firebase
                 const val = snapshot.val();
                 chatHistory = Array.isArray(val) ? val : [];
                 console.log(`✅ История загружена: ${chatHistory.length} сообщений`);
             } else {
-                // Если истории нет - это новый пользователь
                 console.log('📭 История пустая - новый пользователь');
             }
 
-            // ═══════════════════════════════════════════════════════════════════
-            // ШАГ 6: Применяем CSS стили
-            // ═══════════════════════════════════════════════════════════════════
+            // ШАГ 6: CSS стили
             console.log('ЭТАП 5: Применение CSS стилей...');
-            
-            // Объединяем базовые стили + версию (Desktop или Mobile)
-            // baseStyles = общие стили и анимации
-            // desktopStyles или mobileStyles = размеры для версии
             const allStyles = baseStyles + (isMobile ? mobileStyles : desktopStyles);
-            
-            // Подставляем цвета из конфига вместо плейсхолдеров
-            // Заменяем градиент и основной цвет на цвета из конфига
             const coloredStyles = allStyles
-                // Заменяем все градиенты на цвета из конфига
                 .replace(/linear-gradient\(135deg, [^)]+\)/g, 
                     `linear-gradient(135deg, ${config.colorStart || '#007bff'}, ${config.colorEnd || '#0056b3'})`)
-                // Заменяем все вхождения #007bff на основной цвет из конфига
                 .replace(/#007bff/g, config.colorStart || '#007bff');
-            
-            // Вставляем CSS в <head>
             loadStyle(coloredStyles);
 
-            // ═══════════════════════════════════════════════════════════════════
-            // ШАГ 7: Создаём HTML элементы виджета
-            // ═══════════════════════════════════════════════════════════════════
+            // ШАГ 7: HTML элементы
             console.log('ЭТАП 6: Создание HTML элементов...');
             
-            // ──────────────────────────────────────────────────────────────────
-            // КОНТЕЙНЕР ВИДЖЕТА (содержит кнопку и облочку)
-            // ──────────────────────────────────────────────────────────────────
             const widget = document.createElement('div');
             widget.className = 'amina-widget';
 
-            // ──────────────────────────────────────────────────────────────────
-            // ОБЛОЧКА (label) - текст рядом с кнопкой
-            // ──────────────────────────────────────────────────────────────────
             const label = document.createElement('div');
             label.className = 'amina-label';
-            label.style.background = config.bgColor || '#ffffff';  // цвет фона из конфига
-            label.style.color = config.textColor || '#333333';     // цвет текста из конфига
+            label.style.background = config.bgColor || '#ffffff';
+            label.style.color = config.textColor || '#333333';
 
-            // Текст в облочке (будет печататься с анимацией)
             const textSpan = document.createElement('span');
             
-            // Имя бота в облочке (появится после печати текста)
             const nameDiv = document.createElement('div');
             nameDiv.className = 'amina-name';
-            nameDiv.style.color = config.textColor || '#666666';   // цвет имени из конфига
+            nameDiv.style.color = config.textColor || '#666666';
 
-            // Добавляем элементы в облочку
-            label.appendChild(textSpan);     // текст печатается первым
-            label.appendChild(nameDiv);      // имя появляется вторым
+            label.appendChild(textSpan);
+            label.appendChild(nameDiv);
 
-            // ──────────────────────────────────────────────────────────────────
-            // КРУГЛАЯ КНОПКА С АВАТАРОМ
-            // ──────────────────────────────────────────────────────────────────
             const btn = document.createElement('button');
             btn.className = 'amina-btn';
-            // Градиент из конфига (colorStart и colorEnd)
             btn.style.background = `linear-gradient(135deg, ${config.colorStart || '#007bff'}, ${config.colorEnd || '#0056b3'})`;
             btn.innerHTML = `
                 <img src="${config.avatarUrl || ''}" 
@@ -1072,124 +724,109 @@
                 <span class="amina-badge" id="amina-badge">!</span>
             `;
 
-            // Добавляем облочку и кнопку в виджет
             widget.appendChild(label);
             widget.appendChild(btn);
-            
-            // Добавляем весь виджет в <body>
             document.body.appendChild(widget);
 
-            // ═══════════════════════════════════════════════════════════════════
-            // ШАГ 8: Переменные состояния (отслеживают состояние виджета)
-            // ═══════════════════════════════════════════════════════════════════
-            
-            // panel = текущая открытая панель (null = закрыта)
+            // ШАГ 8: Переменные состояния
             let panel = null;
-            
-            // isOpen = открыта ли панель? (true/false)
             let isOpen = false;
-            
-            // isLoading = отправляется ли сообщение? (true/false)
             let isLoading = false;
-            
-            // historyUnsubscribe = функция отписки от Firebase слушателя
-            let historyUnsubscribe = null;
 
             // ██████████████████████████████████████████████████████████████████████████████
             // ██ РАЗДЕЛ 11: ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ                                      ██
             // ██████████████████████████████████████████████████████████████████████████████
 
-            // ──────────────────────────────────────────────────────────────────
-            // ФУНКЦИЯ: Сохранить историю в Firebase
-            // НАЗНАЧЕНИЕ: Вызывается каждый раз когда добавляется новое сообщение
-            // ──────────────────────────────────────────────────────────────────
+            // Сохранить историю в Firebase
             function saveHistory() {
-                // historyRef.set() = сохраняем весь массив chatHistory в Firebase
                 historyRef.set(chatHistory).catch(e => console.error('❌ Ошибка сохранения:', e));
             }
 
-            // ──────────────────────────────────────────────────────────────────
-            // ФУНКЦИЯ: Добавить сообщение в чат (нарисовать пузырь с текстом)
-            // ПАРАМЕТРЫ:
-            // - text = текст сообщения
-            // - type = 'bot', 'user' или 'manager' (определяет цвет и положение)
-            // ──────────────────────────────────────────────────────────────────
+            // Добавить сообщение в чат
             function addMsg(text, type) {
                 const msgs = document.getElementById('amina-messages');
-                if (!msgs) return;  // если контейнера нет - выходим
-                
-                // Создаём новый div для сообщения
+                if (!msgs) return;
                 const div = document.createElement('div');
-                // класс определяет стиль (цвет, положение, острый угол)
                 div.className = `amina-msg ${type}`;
                 div.innerText = text;
-                
-                // Если это сообщение юзера - раскрасить в цвет кнопки (градиент)
                 if (type === 'user') {
                     div.style.background = `linear-gradient(135deg, ${config.colorStart || '#007bff'}, ${config.colorEnd || '#0056b3'})`;
                 }
-                
-                // Добавляем сообщение в контейнер
                 msgs.appendChild(div);
-                scrollDown();  // прокрутить вниз к последнему сообщению
+                scrollDown();
             }
 
-            // ──────────────────────────────────────────────────────────────────
-            // ФУНКЦИЯ: Прокрутить список сообщений вниз (к последнему сообщению)
-            // ИСПОЛЬЗУЕТСЯ: Когда добавляется новое сообщение
-            // ──────────────────────────────────────────────────────────────────
+            // Прокрутить вниз к последнему сообщению
             function scrollDown() {
                 const msgs = document.getElementById('amina-messages');
-                if (msgs) {
-                    // scrollHeight = высота всего содержимого контейнера
-                    // Когда scrollTop === scrollHeight - видно последнее сообщение
-                    msgs.scrollTop = msgs.scrollHeight;
-                }
+                if (msgs) msgs.scrollTop = msgs.scrollHeight;
             }
 
             // ██████████████████████████████████████████████████████████████████████████████
-            // ██ РАЗДЕЛ 12: ФУНКЦИЯ openPanel()                                           ██
-            // ██ НАЗНАЧЕНИЕ: Открыть панель чата                                          ██
+            // ██ РАЗДЕЛ 12: ФУНКЦИЯ closePanel()                                          ██
+            // ██ 🔧 FIX 3: Вынесена в отдельную функцию - больше нет дублирования кода   ██
+            // ██ Раньше один и тот же код закрытия был скопирован в 3 местах             ██
+            // ██████████████████████████████████████████████████████████████████████████████
+
+            function closePanel() {
+                if (!panel) return;
+                console.log('🔒 Закрываем панель...');
+                isOpen = false;
+                panel.classList.add('closing');
+                
+                // 🔧 FIX 2: Правильная отписка от Firebase слушателя
+                // Раньше: historyUnsubscribe() - это неправильно, так не отписывают Firebase
+                // Теперь: historyRef.off('value') - правильный способ отписки
+                historyRef.off('value');
+                
+                setTimeout(() => {
+                    if (panel) panel.remove();
+                    panel = null;
+                }, 300);
+            }
+
+            // ██████████████████████████████████████████████████████████████████████████████
+            // ██ РАЗДЕЛ 13: ФУНКЦИЯ openPanel()                                           ██
             // ██████████████████████████████████████████████████████████████████████████████
 
             function openPanel() {
-                if (isOpen) return;  // если уже открыта - не открываем ещё раз
+                if (isOpen) return;
                 isOpen = true;
                 console.log('🔓 Открываем панель...');
 
-                // Скрываем красный значок непрочитанных сообщений
                 const badge = document.getElementById('amina-badge');
                 if (badge) badge.style.display = 'none';
-                btn.classList.remove('has-message');  // останавливаем красный пульс
+                btn.classList.remove('has-message');
 
-                // HTML футера (если есть текст в chatConfig)
-                const footerHtml = chatConfig.footerText ? `
-                    <div class="amina-footer">
-                        <a href="${chatConfig.footerUrl || '#'}" 
-                           target="_blank" 
-                           style="color: ${chatConfig.footerColor || '#999999'}">
-                            ${chatConfig.footerText}
-                        </a>
-                    </div>` : '';
+                // 🔧 FIX 5: Очищаем footerText от HTML тегов защита от XSS
+                // Раньше footerText вставлялся напрямую в innerHTML - это опасно
+                // Теперь создаём элемент через DOM чтобы теги не исполнились
+                let footerHtml = '';
+                if (chatConfig.footerText) {
+                    const safeText = document.createTextNode(chatConfig.footerText);
+                    const tempDiv = document.createElement('div');
+                    tempDiv.appendChild(safeText);
+                    footerHtml = `
+                        <div class="amina-footer">
+                            <a href="${chatConfig.footerUrl || '#'}" 
+                               target="_blank" 
+                               style="color: ${chatConfig.footerColor || '#999999'}">
+                                ${tempDiv.innerHTML}
+                            </a>
+                        </div>`;
+                }
 
-                // Создаём HTML панели чата
                 panel = document.createElement('div');
                 panel.className = 'amina-panel';
-                // На мобилке скругления только сверху, на десктопе везде
                 panel.style.borderRadius = isMobile ? '16px 16px 0 0' : '16px';
                 panel.innerHTML = `
-                    <!-- ШАПКА панели (имя + аватар + кнопка X) -->
                     <div class="amina-panel-header" style="background: linear-gradient(135deg, ${config.colorStart || '#007bff'}, ${config.colorEnd || '#0056b3'})">
                         <img src="${chatConfig.avatarUrl || config.avatarUrl || ''}" 
                              onerror="this.style.display='none'">
                         <span class="amina-panel-header-name">${chatConfig.botName || config.botName || 'AI Chat'}</span>
                         <button class="amina-panel-close" id="amina-close">✕</button>
                     </div>
-                    
-                    <!-- СПИСОК СООБЩЕНИЙ (сюда добавляются сообщения) -->
                     <div class="amina-messages" id="amina-messages"></div>
-                    
-                    <!-- ПОЛЕ ВВОДА И КНОПКА ОТПРАВКИ -->
                     <div class="amina-input-area">
                         <input class="amina-input" 
                                id="amina-input" 
@@ -1198,79 +835,58 @@
                                 id="amina-send" 
                                 style="background: linear-gradient(135deg, ${config.colorStart || '#007bff'}, ${config.colorEnd || '#0056b3'})">→</button>
                     </div>
-                    
-                    <!-- ФУТЕР (брендирование) -->
                     ${footerHtml}
                 `;
                 document.body.appendChild(panel);
 
-                // ──────────────────────────────────────────────────────────────────
-                // Показываем историю сообщений или приветствие
-                // ──────────────────────────────────────────────────────────────────
-                const messagesDiv = document.getElementById('amina-messages');
+                // Показываем историю или приветствие
                 if (chatHistory.length > 0) {
-                    // Есть история - показываем все сообщения
                     console.log(`📚 Показываем ${chatHistory.length} сообщений из истории`);
                     chatHistory.forEach(msg => {
-                        if (!msg || msg.role === 'system') return;  // пропускаем системные сообщения
-                        
-                        // Определяем тип сообщения
+                        if (!msg || msg.role === 'system') return;
                         const type = msg.fromManager ? 'manager' : (msg.role === 'assistant' ? 'bot' : 'user');
                         addMsg(msg.content, type);
                     });
                 } else if (chatConfig.welcomeMsg) {
-                    // История пустая - показываем приветствие из конфига
                     console.log('👋 Показываем приветственное сообщение');
                     addMsg(chatConfig.welcomeMsg, 'bot');
                     chatHistory.push({ role: 'assistant', content: chatConfig.welcomeMsg });
                     saveHistory();
                 }
 
-                // Подключаем обработчики событий к кнопкам
-                // ✨ Крестик: используем простую inline функцию вместо closePanel
+                // Подключаем крестик
                 const closeButton = document.getElementById('amina-close');
                 console.log('📌 Крестик найден?', closeButton ? 'ДА ✅' : 'НЕТ ❌');
                 
                 if (closeButton) {
                     closeButton.onclick = function(e) {
-                        console.log('🔒 КРЕСТИК НАЖАТ!', e);
-                        if (!panel) return;
-                        isOpen = false;
-                        panel.classList.add('closing');
-                        if (historyUnsubscribe) {
-                            historyUnsubscribe();
-                            historyUnsubscribe = null;
-                        }
-                        setTimeout(() => {
-                            if (panel) panel.remove();
-                            panel = null;
-                        }, 300);
+                        // 🔧 FIX 1: stopPropagation останавливает всплытие клика
+                        // Раньше клик на крестик "всплывал" до кнопки btn
+                        // и панель сразу открывалась снова после закрытия
+                        // Теперь клик остаётся только на крестике
+                        e.stopPropagation();
+                        console.log('🔒 КРЕСТИК НАЖАТ!');
+                        closePanel();
                     };
                     console.log('✅ Обработчик крестика подключен');
                 } else {
                     console.error('❌ КРЕСТИК НЕ НАЙДЕН!');
                 }
                 
-                document.getElementById('amina-send').onclick = sendMsg;      // кнопка отправки
+                document.getElementById('amina-send').onclick = sendMsg;
                 document.getElementById('amina-input').addEventListener('keypress', e => {
-                    if (e.key === 'Enter') sendMsg();  // отправить на Enter
+                    if (e.key === 'Enter') sendMsg();
                 });
 
-                // ──────────────────────────────────────────────────────────────────
-                // Firebase слушатель - получаем новые сообщения от менеджера
-                // Срабатывает каждый раз когда меняется история в Firebase
-                // ──────────────────────────────────────────────────────────────────
-                historyUnsubscribe = historyRef.on('value', snap => {
+                // Firebase слушатель - новые сообщения от менеджера
+                historyRef.on('value', snap => {
                     if (!snap.exists()) return;
                     const val = snap.val();
                     const newHistory = Array.isArray(val) ? val : [];
                     
-                    // Если появились новые сообщения
                     if (newHistory.length > chatHistory.length) {
                         const newMessages = newHistory.slice(chatHistory.length);
                         chatHistory = newHistory;
-                        
-                        // Показываем новые сообщения (обычно от менеджера)
                         newMessages.forEach(msg => {
                             if (msg && msg.fromManager) {
                                 console.log('💬 Новое сообщение от менеджера');
@@ -1282,190 +898,132 @@
             }
 
             // ██████████████████████████████████████████████████████████████████████████████
-            // ██ РАЗДЕЛ 13: ФУНКЦИЯ closePanel() - УДАЛЕНА ДЛЯ ДИАГНОСТИКИ                ██
-            // ██████████████████████████████████████████████████████████████████████████████
-            // Функция закрытия удалена - проверяем что происходит с крестиком
-
-            // ██████████████████████████████████████████████████████████████████████████████
             // ██ РАЗДЕЛ 14: ФУНКЦИЯ sendMsg()                                             ██
-            // ██ НАЗНАЧЕНИЕ: Отправить сообщение юзера в Claude AI                        ██
             // ██████████████████████████████████████████████████████████████████████████████
 
             async function sendMsg() {
-                if (isLoading) return;  // если уже отправляется - не отправляем ещё раз
+                if (isLoading) return;
                 
                 const input = document.getElementById('amina-input');
                 const sendBtn = document.getElementById('amina-send');
-                const text = input.value.trim();  // trim удаляет пробелы в начале и конце
+                const text = input.value.trim();
                 
-                if (!text) return;  // если текст пуст - не отправляем
+                if (!text) return;
 
                 console.log(`✉️ Юзер отправляет: ${text.substring(0, 50)}...`);
 
-                // ──────────────────────────────────────────────────────────────────
-                // ШАГ 1: Показываем сообщение юзера в чате
-                // ──────────────────────────────────────────────────────────────────
                 addMsg(text, 'user');
-                input.value = '';  // очищаем поле ввода
+                input.value = '';
 
-                // ──────────────────────────────────────────────────────────────────
-                // ШАГ 2: Сохраняем в историю и Firebase
-                // ──────────────────────────────────────────────────────────────────
+                // Запоминаем индекс сообщения юзера чтобы точно его удалить при ошибке
+                // 🔧 FIX 4: Раньше был chatHistory.pop() - он мог удалить не то сообщение
+                // Теперь запоминаем точный индекс и удаляем именно его
+                const userMsgIndex = chatHistory.length;
                 chatHistory.push({ role: 'user', content: text });
                 saveHistory();
 
-                // ──────────────────────────────────────────────────────────────────
-                // ШАГ 3: Показываем анимацию печати (три точки)
-                // ──────────────────────────────────────────────────────────────────
                 const typingDiv = document.createElement('div');
                 typingDiv.className = 'amina-typing';
                 typingDiv.innerHTML = '<span></span><span></span><span></span>';
                 document.getElementById('amina-messages').appendChild(typingDiv);
                 scrollDown();
 
-                // ──────────────────────────────────────────────────────────────────
-                // ШАГ 4: Блокируем кнопку и input пока отправляется
-                // ──────────────────────────────────────────────────────────────────
                 isLoading = true;
                 sendBtn.disabled = true;
                 input.disabled = true;
 
                 try {
-                    // ──────────────────────────────────────────────────────────────────
-                    // ШАГ 5: Отправляем сообщения в Claude AI через наш API
-                    // /api/authentication = главный API обработчик
-                    // ──────────────────────────────────────────────────────────────────
                     console.log('🚀 Отправляем запрос в Claude AI...');
                     const res = await fetch(`${backendUrl}/api/authentication`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ 
-                            clientId,          // какого клиента запрос
-                            sessionId,         // какой сессии пользователя
-                            messages: chatHistory  // вся история для контекста
+                            clientId,
+                            sessionId,
+                            messages: chatHistory
                         })
                     });
 
-                    // Убираем анимацию печати
                     if (typingDiv) typingDiv.remove();
                     
                     const result = await res.json();
 
-                    // Если ИИ выключен - показываем сообщение юзеру
                     if (result.aiDisabled) {
                         console.log('⏸️ ИИ выключен - менеджер будет отвечать');
                         addMsg('Менеджер ответит вам в ближайшее время...', 'bot');
                         return;
                     }
 
-                    // Проверяем что ответ успешен
                     if (!res.ok || !result.text) throw new Error(result.error || 'API error');
 
                     console.log('🤖 Claude ответил');
-
-                    // ──────────────────────────────────────────────────────────────────
-                    // ШАГ 6: Показываем ответ Claude в чате
-                    // ──────────────────────────────────────────────────────────────────
                     addMsg(result.text, 'bot');
                     chatHistory.push({ role: 'assistant', content: result.text });
                     saveHistory();
 
                 } catch (e) {
-                    // Если ошибка - убираем анимацию печати и логируем ошибку
                     if (typingDiv && typingDiv.parentNode) typingDiv.remove();
                     console.error('❌ Ошибка отправки:', e.message);
-                    chatHistory.pop();  // удаляем неотправленное сообщение
+                    
+                    // 🔧 FIX 4: Удаляем точно то сообщение юзера которое не отправилось
+                    // Раньше: chatHistory.pop() - могло удалить не то
+                    // Теперь: splice(userMsgIndex, 1) - удаляем по точному индексу
+                    chatHistory.splice(userMsgIndex, 1);
                     
                 } finally {
-                    // Разблокируем кнопку и input в любом случае
                     isLoading = false;
                     if (sendBtn) sendBtn.disabled = false;
                     if (input) {
                         input.disabled = false;
-                        input.focus();  // фокусируемся на input
+                        input.focus();
                     }
                 }
             }
 
             // ██████████████████████████████████████████████████████████████████████████████
             // ██ РАЗДЕЛ 15: ФУНКЦИЯ typeText()                                            ██
-            // ██ НАЗНАЧЕНИЕ: Анимация печати текста в облочке                             ██
-            // ██ Печатает text1, потом паузу, потом text2, потом показывает имя            ██
             // ██████████████████████████████████████████████████████████████████████████████
 
             async function typeText() {
-                label.classList.add('visible');  // показываем облочку
+                label.classList.add('visible');
                 console.log('✏️ Начинаем печать текста в облочке...');
                 
-                // Печатаем первый текст (text1)
                 if (config.text1) {
                     for (let char of config.text1) {
                         textSpan.textContent += char;
-                        // Случайная задержка между символами (50-100ms)
-                        // Это создаёт эффект "печатания" человеком
                         await new Promise(r => setTimeout(r, Math.random() * 50 + 50));
                     }
-                    // Ждём 2 секунды перед вторым текстом
                     await new Promise(r => setTimeout(r, 2000));
                 }
                 
-                // Очищаем и печатаем второй текст (text2)
                 textSpan.textContent = '';
                 if (config.text2) {
                     for (let char of config.text2) {
                         textSpan.textContent += char;
-                        // Случайная задержка между символами
                         await new Promise(r => setTimeout(r, Math.random() * 50 + 50));
                     }
                 }
                 
-                // Показываем имя бота в облочке
                 nameDiv.textContent = config.botName || 'Bot';
                 console.log('✅ Печать завершена');
             }
 
             // ██████████████████████████████████████████████████████████████████████████████
             // ██ РАЗДЕЛ 16: ОБРАБОТЧИКИ СОБЫТИЙ                                           ██
-            // ██ НАЗНАЧЕНИЕ: Подключить клики на кнопки к функциям                        ██
+            // ██ 🔧 FIX 3: Теперь просто вызываем closePanel() вместо дублирования кода   ██
             // ██████████████████████████████████████████████████████████████████████████████
 
-            // При клике на кнопку - открыть/закрыть панель
             btn.onclick = () => {
                 if (isOpen) {
-                    // Закрываем панель
-                    console.log('🔒 КНОПКА ЗАКРЫТЬ!');
-                    if (!panel) return;
-                    isOpen = false;
-                    panel.classList.add('closing');
-                    if (historyUnsubscribe) {
-                        historyUnsubscribe();
-                        historyUnsubscribe = null;
-                    }
-                    setTimeout(() => {
-                        if (panel) panel.remove();
-                        panel = null;
-                    }, 300);
+                    closePanel();
                 } else {
                     openPanel();
                 }
             };
             
-            // При клике на облочку - открыть/закрыть панель
             label.onclick = () => {
                 if (isOpen) {
-                    // Закрываем панель
-                    console.log('🔒 ОБЛОЧКА ЗАКРЫТЬ!');
-                    if (!panel) return;
-                    isOpen = false;
-                    panel.classList.add('closing');
-                    if (historyUnsubscribe) {
-                        historyUnsubscribe();
-                        historyUnsubscribe = null;
-                    }
-                    setTimeout(() => {
-                        if (panel) panel.remove();
-                        panel = null;
-                    }, 300);
+                    closePanel();
                 } else {
                     openPanel();
                 }
@@ -1475,7 +1033,7 @@
             // ██ РАЗДЕЛ 17: ЗАПУСК ВИДЖЕТА                                                ██
             // ██████████████████████████████████████████████████████████████████████████████
 
-            typeText();  // запускаем анимацию печати текста в облочке
+            typeText();
             console.log('✅ Виджет инициализирован и готов к использованию!');
 
         } catch (e) {
@@ -1485,15 +1043,12 @@
 
     // ██████████████████████████████████████████████████████████████████████████████
     // ██ РАЗДЕЛ 18: АВТОЗАПУСК                                                    ██
-    // ██ НАЗНАЧЕНИЕ: Запустить initMina() когда страница загружена                ██
     // ██████████████████████████████████████████████████████████████████████████████
 
     if (document.readyState === 'loading') {
-        // Страница ещё загружается - ждём события DOMContentLoaded
         document.addEventListener('DOMContentLoaded', initMina);
         console.log('⏳ Ждём загрузки страницы...');
     } else {
-        // Страница уже загружена - запускаем сразу
         initMina();
     }
 
