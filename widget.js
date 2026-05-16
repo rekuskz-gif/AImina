@@ -549,8 +549,17 @@
             typeText();
             console.log('✅ Виджет инициализирован и готов к использованию!');
 
-        } catch (error) {
+} catch (error) {
             console.error('\n❌ ОШИБКА:', error.message);
         }
     }
+
+    // 🚀 ВЫЗЫВАЕМ ФУНКЦИЮ!
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initMina);
+        console.log('⏳ Ждём загрузки страницы...');
+    } else {
+        initMina();
+    }
+
 })();
