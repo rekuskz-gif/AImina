@@ -523,9 +523,11 @@
 btn.onclick = () => isOpen ? closePanel() : openPanel();
 label.onclick = () => isOpen ? closePanel() : openPanel();
 
-// 📱 ДОБАВЛЯЕМ WHATSAPP LISTENER
-try {
-    historyRef.once('value', (snap) => {
+typeText();
+
+// 📱 ДОБАВЛЯЕМ WHATSAPP LISTENER - БЕЗ try-catch (просто код)
+historyRef.once('value', (snap) => {
+    try {
         const data = snap.val();
         
         console.log('📚 Firebase данные:', data);
@@ -573,22 +575,21 @@ try {
                 whatsappBtn.style.transform = 'scale(1)';
             };
             
-            const inputArea = panel.querySelector('.amina-input-area');
+            const inputArea = panel ? panel.querySelector('.amina-input-area') : null;
             if (inputArea) {
                 inputArea.before(whatsappBtn);
                 console.log('✅ Кнопка WhatsApp добавлена');
             } else {
-                console.error('❌ inputArea не найдена!');
+                console.warn('⚠️ inputArea не найдена (панель ещё не открыта)');
             }
         } else {
             console.warn('⚠️ dialogNumber или whatsappPhone не найдены');
         }
-    });
-} catch (e) {
-    console.error('❌ Ошибка WhatsApp блока:', e.message);
-}
+    } catch (e) {
+        console.error('❌ Ошибка WhatsApp:', e.message);
+    }
+});
 
-typeText();
 console.log('✅ Виджет инициализирован и готов к использованию!');
 
     // ════════════════════════════════════════════════════════════════════════════════
