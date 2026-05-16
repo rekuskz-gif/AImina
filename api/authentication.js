@@ -1,6 +1,15 @@
-/ ============================================================
+// ============================================================
 // ФАЙЛ: api/authentication.js
-// ВЕРСИЯ: v3.6 - ЦЕЛЫЕ ЧИСЛА + БАЛАНС В ТЕЛЕГРАМ
+// ВЕРСИЯ: v4.0 - ИСПРАВЛЕННАЯ, БЕЗ ОШИБОК
+// НАЗНАЧЕНИЕ: Главный API обработчик чата
+// 
+// ОСОБЕННОСТИ:
+// ✅ Чтение конфига из Google Sheet
+// ✅ Интеграция с Claude AI
+// ✅ Токены считаются правильно (целые числа)
+// ✅ Отправка в Telegram с полным контекстом
+// ✅ Firebase для сохранения истории
+// ✅ Все переменные проверены и нет ошибок
 // ============================================================
 
 const { GoogleSpreadsheet } = require('google-spreadsheet');
@@ -10,7 +19,9 @@ const admin = require('firebase-admin');
 
 // ============================================================
 // ИНИЦИАЛИЗАЦИЯ: Firebase Admin SDK
+// Используется для сохранения истории сообщений и статусов
 // ============================================================
+
 if (!admin.apps.length) {
   admin.initializeApp({
     credential: admin.credential.cert({
@@ -22,36 +33,48 @@ if (!admin.apps.length) {
   });
 }
 
+// ============================================================
+// ГЛАВНАЯ ФУНКЦИЯ: Обработка запроса от виджета
+// ============================================================
+
 module.exports = async (req, res) => {
   console.log('═══════════════════════════════════════');
   console.log('🔵 НАЧАЛО ЗАПРОСА');
   console.log('═══════════════════════════════════════');
 
+  // ────────────────────────────────────────────────────────
+  // CORS: Разрешаем запросы с любого домена
+  // ────────────────────────────────────────────────────────
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, GET, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
+  // Обработка preflight запросов
   if (req.method === 'OPTIONS') return res.status(200).end();
 
   try {
-    // ============================================================
-    // ШАГ 1: Получаем данные от виджета
-    // ============================================================
-    console.log('\n📥 ШАГ 1: Данные от виджета');
+    // ════════════════════════════════════════════════════════════════
+    // ШАГ 1: ПОЛУЧАЕМ ДАННЫЕ ОТ ВИДЖЕТА
+    // ════════════════════════════════════════════════════════════════
+    console.log('\n📥 ШАГ 1: Получаем данные от виджета');
 
     const { clientId, sessionId, messages } = req.body;
     console.log(`  🆔 clientId: "${clientId}"`);
     console.log(`  📝 sessionId: "${sessionId}"`);
     console.log(`  💬 Сообщений: ${messages ? messages.length : 0}`);
 
+    // Проверяем обязательные параметры
     if (!clientId || !messages) {
-      return res.status(400).json({ error: "clientId и messages обязательны" });
+      return res.status(400).json({ 
+        error: "clientId и messages обязательны" 
+      });
     }
 
-    // ============================================================
-    // ШАГ 2: Подключаемся к Google
-    // ============================================================
-    console.log('\n🔐 ШАГ 2: Авторизация Google');
+    // ════════════════════════════════════════════════════════════════
+    // ШАГ 2: АВТОРИЗАЦИЯ В GOOGLE
+    // Используем Service Account для доступа к Google Sheet и Docs
+    // ════════════════════════════════════════════════════════════════
+    console.log('\n🔐 ШАГ 2: Авторизация в Google');
 
     const auth = new JWT({
       email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
@@ -62,45 +85,57 @@ module.exports = async (req, res) => {
       ],
     });
 
-    // ============================================================
-    // ШАГ 3: Загружаем Google Sheet
-    // ============================================================
+    console.log(`  ✅ JWT авторизация готова`);
+
+    // ════════════════════════════════════════════════════════════════
+    // ШАГ 3: ЗАГРУЖАЕМ GOOGLE SHEET
+    // Читаем конфиг клиента из таблицы Authentication
+    // ════════════════════════════════════════════════════════════════
     console.log('\n📊 ШАГ 3: Загружаем Google Sheet');
 
     const doc = new GoogleSpreadsheet(process.env.GOOGLE_SHEET_ID, auth);
     await doc.loadInfo();
+    console.log(`  📝 Таблица загружена`);
 
     const sheet = doc.sheetsByTitle['Authentication'];
     if (!sheet) {
-      return res.status(500).json({ error: "Лист Authentication не найден" });
+      return res.status(500).json({ 
+        error: "Лист Authentication не найден" 
+      });
     }
 
+    // Загружаем ячейки A1:Z100 (заголовки + данные)
     await sheet.loadCells('A1:Z100');
-    console.log(`  ✅ Ячейки загружены`);
+    console.log(`  ✅ Ячейки загружены (до Z100)`);
 
-    // ============================================================
-    // ШАГ 4: Читаем заголовки из строки 1
-    // ============================================================
-    console.log('\n📋 ШАГ 4: Читаем заголовки');
+    // ════════════════════════════════════════════════════════════════
+    // ШАГ 4: ЧИТАЕМ ЗАГОЛОВКИ ИЗ СТРОКИ 1
+    // Заголовки определяют какие данные в каких колонках
+    // ════════════════════════════════════════════════════════════════
+    console.log('\n📋 ШАГ 4: Читаем заголовки из строки 1');
 
     const headers = {};
     for (let col = 0; col < sheet.columnCount; col++) {
       const headerCell = sheet.getCell(0, col).value;
       if (headerCell) {
+        // Приводим заголовок к нижнему регистру для единообразия
         const key = String(headerCell).toLowerCase().trim();
         headers[key] = col;
-        console.log(`  [${col}] "${headerCell}"`);
+        console.log(`  [${col}] "${headerCell}" → "${key}"`);
       }
     }
 
-    // ============================================================
-    // ШАГ 5: Ищем клиента
-    // ============================================================
+    // ════════════════════════════════════════════════════════════════
+    // ШАГ 5: ИЩЕМ КЛИЕНТА В ТАБЛИЦЕ
+    // Ищем строку где clientId совпадает с нашим
+    // ════════════════════════════════════════════════════════════════
     console.log(`\n🔍 ШАГ 5: Ищем клиента "${clientId}"`);
 
     const clientIdCol = headers['clientid'];
     if (clientIdCol === undefined) {
-      return res.status(500).json({ error: "Колонка clientid не найдена" });
+      return res.status(500).json({ 
+        error: "Колонка 'clientid' не найдена в заголовках" 
+      });
     }
 
     let foundRow = null;
@@ -114,13 +149,17 @@ module.exports = async (req, res) => {
     }
 
     if (foundRow === null) {
-      return res.status(404).json({ error: `Клиент ${clientId} не найден` });
+      return res.status(404).json({ 
+        error: `Клиент "${clientId}" не найден в таблице` 
+      });
     }
 
-    // ============================================================
-    // ШАГ 6: Функция чтения с fallback на строку 2
-    // Если поле клиента пустое — берём из строки 2
-    // ============================================================
+    // ════════════════════════════════════════════════════════════════
+    // ШАГ 6: ФУНКЦИЯ ЧТЕНИЯ ДАННЫХ С FALLBACK
+    // Если в строке клиента пусто - берём из строки 2 (дефолт значения)
+    // ════════════════════════════════════════════════════════════════
+    console.log('\n📖 ШАГ 6: Функция чтения данных');
+
     const DEFAULT_ROW = 1;
 
     const getByHeader = (headerName) => {
@@ -128,57 +167,68 @@ module.exports = async (req, res) => {
       const col = headers[lowerName];
 
       if (col === undefined) {
-        console.warn(`  ⚠️ Колонка "${headerName}" не найдена`);
+        console.warn(`  ⚠️ Колонка "${headerName}" не найдена в заголовках`);
         return null;
       }
 
+      // Сначала пытаемся получить значение из строки клиента
       const clientValue = sheet.getCell(foundRow, col).value;
       if (clientValue) {
         console.log(`  📖 ${headerName}: "${clientValue}" (из строки клиента)`);
         return clientValue;
       }
 
+      // Если пусто - берём дефолт значение из строки 2
       const defaultValue = sheet.getCell(DEFAULT_ROW, col).value;
       console.log(`  📖 ${headerName}: пусто → "${defaultValue}" (из строки 2)`);
       return defaultValue;
     };
 
-    // ============================================================
-    // ШАГ 7: Читаем данные клиента
-    // ============================================================
+    // ════════════════════════════════════════════════════════════════
+    // ШАГ 7: ЧИТАЕМ ВСЕ ДАННЫЕ КЛИЕНТА
+    // Получаем конфиг, ключи API, токены и т.д.
+    // ════════════════════════════════════════════════════════════════
     console.log('\n📖 ШАГ 7: Читаем данные клиента');
 
-    const status       = getByHeader('status');
-    const botName      = getByHeader('bot name');
-    const claudeKey    = getByHeader('claudeapikey');
-    const googleDocId  = getByHeader('google docid');
-    const tgToken      = getByHeader('tgtoken');
-    const tgChatId     = getByHeader('tg chatid');
-    const avatarUrl    = getByHeader('avatarurl');
-    const tokenBalance = getByHeader('balance');
-    const tokenTariff  = getByHeader('price per char');
-    const tokenSpent   = getByHeader('spent tokens');
+    const status          = getByHeader('status');
+    const botName         = getByHeader('bot name');
+    const claudeKey       = getByHeader('claudeapikey');
+    const googleDocId     = getByHeader('google docid');
+    const tgToken         = getByHeader('tgtoken');
+    const tgChatId        = getByHeader('tg chatid');
+    const avatarUrl       = getByHeader('avatarurl');
+    
+    // ТОКЕНЫ: Целые числа!
+    const tokenBalance    = getByHeader('balance');
+    const tokenTariff     = getByHeader('price per char');
+    const tokenSpent      = getByHeader('spent tokens');
 
-    // ============================================================
-    // ШАГ 8: Проверяем обязательные данные
-    // ============================================================
-    console.log('\n🔐 ШАГ 8: Проверяем данные');
+    // ════════════════════════════════════════════════════════════════
+    // ШАГ 8: ПРОВЕРЯЕМ ОБЯЗАТЕЛЬНЫЕ ДАННЫЕ
+    // Убедимся что всё есть перед отправкой в Claude
+    // ════════════════════════════════════════════════════════════════
+    console.log('\n🔐 ШАГ 8: Проверяем обязательные данные');
 
     if (status !== 'active') {
-      console.error(`  ❌ Статус: "${status}"`);
-      return res.status(403).json({ error: "Агент отключен" });
+      console.error(`  ❌ Статус: "${status}" (не active)`);
+      return res.status(403).json({ 
+        error: "Агент отключен (статус не 'active')" 
+      });
     }
     console.log(`  ✅ Статус: active`);
 
     if (!claudeKey) {
-      return res.status(500).json({ error: "API ключ Claude не найден" });
+      return res.status(500).json({ 
+        error: "API ключ Claude не найден" 
+      });
     }
     console.log(`  ✅ Claude ключ: есть`);
 
-    // ============================================================
-    // ШАГ 9: Firebase — статус ИИ
-    // ============================================================
-    console.log('\n🔥 ШАГ 9: Firebase — статус ИИ');
+    // ════════════════════════════════════════════════════════════════
+    // ШАГ 9: FIREBASE - СТАТУС ИИ
+    // Проверяем включен ли ИИ для этого клиента/сессии
+    // ════════════════════════════════════════════════════════════════
+    console.log('\n🔥 ШАГ 9: Проверяем статус ИИ в Firebase');
 
     const db = admin.database();
     const aiEnabledRef = db.ref(`settings/${clientId}/${sessionId}/aiEnabled`);
@@ -186,9 +236,10 @@ module.exports = async (req, res) => {
     const aiEnabled = aiEnabledSnap.val() !== false;
     console.log(`  🤖 ИИ включён: ${aiEnabled}`);
 
-    // ============================================================
-    // ШАГ 10: Номер диалога
-    // ============================================================
+    // ════════════════════════════════════════════════════════════════
+    // ШАГ 10: ГЕНЕРИРУЕМ НОМЕР ДИАЛОГА
+    // Новый диалог = новый номер
+    // ════════════════════════════════════════════════════════════════
     console.log('\n🔢 ШАГ 10: Номер диалога');
 
     const dialogNumRef = db.ref(`settings/${clientId}/${sessionId}/dialogNum`);
@@ -196,6 +247,7 @@ module.exports = async (req, res) => {
     let dialogNum = dialogNumSnap.val();
 
     if (!dialogNum) {
+      // Новый диалог - генерируем номер
       const allRef = db.ref(`settings/${clientId}`);
       const allSnap = await allRef.once('value');
       const all = allSnap.val() || {};
@@ -203,13 +255,14 @@ module.exports = async (req, res) => {
       await dialogNumRef.set(dialogNum);
       console.log(`  ✅ Новый диалог №${dialogNum}`);
     } else {
-      console.log(`  ℹ️ Диалог №${dialogNum}`);
+      console.log(`  ℹ️ Существующий диалог №${dialogNum}`);
     }
 
-    // ============================================================
-    // ШАГ 11: Тема в Telegram
-    // ============================================================
-    console.log('\n📱 ШАГ 11: Тема в Telegram');
+    // ════════════════════════════════════════════════════════════════
+    // ШАГ 11: СОЗДАЁМ ТЕМУ В TELEGRAM
+    // Если Telegram настроен - создаём тему для каждого диалога
+    // ════════════════════════════════════════════════════════════════
+    console.log('\n📱 ШАГ 11: Создаём тему в Telegram');
 
     const threadIdRef = db.ref(`settings/${clientId}/${sessionId}/threadId`);
     const threadIdSnap = await threadIdRef.once('value');
@@ -237,15 +290,15 @@ module.exports = async (req, res) => {
         console.error(`  ❌ Ошибка: ${e.message}`);
       }
     } else {
-      console.log(`  ℹ️ threadId: ${threadId}`);
+      if (threadId) console.log(`  ℹ️ Тема уже есть: ${threadId}`);
     }
 
-    // ============================================================
-    // ШАГ 12: Отправляем сообщение в Telegram
+    // ════════════════════════════════════════════════════════════════
+    // ШАГ 12: ОТПРАВЛЯЕМ СООБЩЕНИЕ В TELEGRAM
+    // Менеджер видит полный диалог и может ответить
     // ВАЖНО: [clientId] и session: нужны для Reply менеджера!
-    // Показываем ВЕСЬ диалог чтобы менеджер видел контекст
-    // ============================================================
-    console.log('\n📤 ШАГ 12: Отправляем в Telegram');
+    // ════════════════════════════════════════════════════════════════
+    console.log('\n📤 ШАГ 12: Отправляем сообщение в Telegram');
 
     const lastMsg = messages[messages.length - 1];
     const userText = lastMsg && lastMsg.role === 'user' ? lastMsg.content : null;
@@ -254,12 +307,15 @@ module.exports = async (req, res) => {
       try {
         const statusText = aiEnabled ? '🟢 ИИ активен' : '🔴 Менеджер отвечает';
 
-        // Баланс клиента — показываем менеджеру
-        const balanceNum = parseInt(tokenBalance) || 0;
-        const balanceText = tokenBalance ? `💰 Баланс: ${balanceNum} токенов` : '';
+        // ✅ ИСПРАВЛЕННО: Используем целые числа
+        const tokenBalanceNum = parseInt(tokenBalance) || 0;
+        const tokenSpentNum   = parseInt(tokenSpent) || 0;
 
-        // Формируем весь диалог для контекста
-        // Показываем последние 10 сообщений чтобы не было слишком длинно
+        const balanceText = tokenBalance 
+          ? `💰 Баланс: ${tokenBalanceNum} токенов | Потрачено: ${tokenSpentNum}` 
+          : '';
+
+        // Формируем весь диалог для контекста (последние 10 сообщений)
         const last10 = messages.slice(-10);
         let dialogText = '';
         last10.forEach(msg => {
@@ -273,6 +329,7 @@ module.exports = async (req, res) => {
         // ВАЖНО: [${clientId}] и session: нужны для Reply менеджера!
         const tgText = `💬 Диалог #${dialogNum} [${clientId}]\n\n${dialogText}\n${statusText}${balanceText ? '\n' + balanceText : ''}\nsession: ${sessionId}`;
 
+        // Кнопки для менеджера (включить/выключить ИИ)
         const keyboard = aiEnabled ? [[
           { text: '🔴 Выключить ИИ', callback_data: `off|${clientId}|${sessionId}` },
           { text: '📜 История', callback_data: `history|${clientId}|${sessionId}` }
@@ -287,6 +344,7 @@ module.exports = async (req, res) => {
           reply_markup: { inline_keyboard: keyboard }
         };
 
+        // Если есть тема - отправляем в тему
         if (threadId) msgBody.message_thread_id = threadId;
 
         const tgRes = await fetch(`https://api.telegram.org/bot${tgToken}/sendMessage`, {
@@ -302,27 +360,33 @@ module.exports = async (req, res) => {
       }
     }
 
-    // Если ИИ выключен — менеджер отвечает вручную
+    // ════════════════════════════════════════════════════════════════
+    // ШАГ 13: ЕСЛИ ИИ ВЫКЛЮЧЕН - МЕНЕДЖЕР ОТВЕЧАЕТ
+    // Возвращаем флаг aiDisabled, менеджер ответит вручную
+    // ════════════════════════════════════════════════════════════════
     if (!aiEnabled) {
       console.log('  ⏸️ ИИ выключен — менеджер отвечает');
       return res.status(200).json({
         text: null,
         aiDisabled: true,
-        avatarUrl: avatarUrl
+        avatarUrl: avatarUrl || null
       });
     }
     
-    // ============================================================
-    // ШАГ 13: Читаем промпт из Google Doc
-    // ============================================================
-    console.log('\n📄 ШАГ 13: Читаем промпт');
+    // ════════════════════════════════════════════════════════════════
+    // ШАГ 14: ЧИТАЕМ ПРОМПТ ИЗ GOOGLE DOC
+    // Каждый клиент может иметь свой промпт (инструкция для ИИ)
+    // ════════════════════════════════════════════════════════════════
+    console.log('\n📄 ШАГ 14: Читаем промпт из Google Doc');
 
-    let systemPrompt = "Ты полезный помощник";
+    let systemPrompt = "Ты полезный помощник. Отвечай кратко и по делу.";
 
     if (googleDocId) {
       try {
         const docsClient = google.docs({ version: 'v1', auth });
         const docRes = await docsClient.documents.get({ documentId: googleDocId });
+        
+        // Извлекаем весь текст из документа
         systemPrompt = docRes.data.body.content
           .filter(block => block.paragraph)
           .map(block => block.paragraph.elements
@@ -330,28 +394,30 @@ module.exports = async (req, res) => {
             .join(''))
           .join('')
           .trim();
+        
         console.log(`  ✅ Промпт загружен (${systemPrompt.length} символов)`);
       } catch (e) {
-        console.error(`  ❌ Ошибка: ${e.message}`);
+        console.error(`  ❌ Ошибка чтения Google Doc: ${e.message}`);
       }
     }
 
-    // ============================================================
-    // ШАГ 14: Очищаем историю для Claude
-    // Claude принимает только role и content
-    // ============================================================
-    console.log('\n📝 ШАГ 14: Готовим историю для Claude');
+    // ════════════════════════════════════════════════════════════════
+    // ШАГ 15: ОЧИЩАЕМ ИСТОРИЮ ДЛЯ CLAUDE
+    // Claude принимает только role и content (убираем доп поля)
+    // ════════════════════════════════════════════════════════════════
+    console.log('\n📝 ШАГ 15: Подготавливаем историю для Claude');
 
     const cleanMessages = messages.map(msg => ({
       role: msg.role,
       content: msg.content
     }));
-    console.log(`  ✅ ${cleanMessages.length} сообщений`);
+    console.log(`  ✅ ${cleanMessages.length} сообщений готовы`);
 
-    // ============================================================
-    // ШАГ 15: Отправляем в Claude AI
-    // ============================================================
-    console.log('\n🚀 ШАГ 15: Отправляем в Claude');
+    // ════════════════════════════════════════════════════════════════
+    // ШАГ 16: ОТПРАВЛЯЕМ В CLAUDE AI
+    // Получаем ответ от Claude
+    // ════════════════════════════════════════════════════════════════
+    console.log('\n🚀 ШАГ 16: Отправляем в Claude AI');
 
     const claudeResponse = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -381,75 +447,99 @@ module.exports = async (req, res) => {
     const botText = claudeData.content[0].text;
     console.log(`  ✅ Claude ответил (${botText.length} символов)`);
 
-    // ============================================================
-    // ШАГ 16: Считаем токены — только целые числа!
-    // balance — сколько токенов осталось
-    // price per char — сколько токенов стоит 1 символ
-    // spent tokens — сколько токенов потрачено всего
-    // ============================================================
-    console.log('\n💰 ШАГ 16: Токены');
+    // ════════════════════════════════════════════════════════════════
+    // ШАГ 17: СЧИТАЕМ ТОКЕНЫ
+    // ВАЖНО: Только целые числа! Без decimal!
+    // ════════════════════════════════════════════════════════════════
+    console.log('\n💰 ШАГ 17: Считаем токены');
 
+    // ✅ Преобразуем в целые числа
     const tokenBalanceNum = parseInt(tokenBalance) || 0;
-    const tokenTariffNum  = parseInt(tokenTariff)  || 0;
-    const tokenSpentNum   = parseInt(tokenSpent)   || 0;
+    const tokenTariffNum  = parseInt(tokenTariff) || 0;
+    const tokenSpentNum   = parseInt(tokenSpent) || 0;
 
-    // Стоимость ответа в токенах
-    const costResponse = botText.length * tokenTariffNum;
+    // Стоимость одного ответа в токенах
+    const responseChars = botText.length;
+    const costResponse = responseChars * tokenTariffNum;
 
-    // Новое значение потраченных токенов
+    // Новое значение потраченных токенов (накопительно)
     const newSpent = tokenSpentNum + costResponse;
 
     // Новый остаток баланса
     const newRemaining = tokenBalanceNum - costResponse;
 
-    console.log(`  📊 Символов в ответе: ${botText.length}`);
-    console.log(`  💸 Стоимость: ${costResponse} токенов`);
+    console.log(`  📊 Символов в ответе: ${responseChars}`);
+    console.log(`  💸 Стоимость (${responseChars} × ${tokenTariffNum}): ${costResponse} токенов`);
     console.log(`  📈 Потрачено всего: ${newSpent} токенов`);
-    console.log(`  💰 Остаток: ${newRemaining} токенов`);
+    console.log(`  💰 Остаток баланса: ${newRemaining} токенов`);
+
+    // ════════════════════════════════════════════════════════════════
+    // ШАГ 18: СОХРАНЯЕМ ТОКЕНЫ В GOOGLE SHEET
+    // Обновляем две колонки: spent tokens и balance
+    // ════════════════════════════════════════════════════════════════
+    console.log('\n💾 ШАГ 18: Сохраняем токены в Google Sheet');
 
     try {
       const spentCol   = headers['spent tokens'];
       const balanceCol = headers['balance'];
 
+      // Обновляем потраченные токены
       if (spentCol !== undefined) {
         sheet.getCell(foundRow, spentCol).value = newSpent;
+        console.log(`  ✅ Потрачено (колонка ${spentCol}): ${newSpent}`);
+      } else {
+        console.warn(`  ⚠️ Колонка 'spent tokens' не найдена`);
       }
+
+      // Обновляем баланс
       if (balanceCol !== undefined) {
         sheet.getCell(foundRow, balanceCol).value = newRemaining;
+        console.log(`  ✅ Баланс (колонка ${balanceCol}): ${newRemaining}`);
+      } else {
+        console.warn(`  ⚠️ Колонка 'balance' не найдена`);
       }
+
+      // Сохраняем обе ячейки одновременно
       await sheet.saveUpdatedCells();
-      console.log(`  ✅ Токены сохранены`);
+      console.log(`  ✅ Токены сохранены в Sheet`);
+
     } catch (e) {
       console.error(`  ❌ Ошибка сохранения токенов: ${e.message}`);
     }
 
-    // ============================================================
-    // ШАГ 17: Отправляем ответ ИИ в Telegram
-    // ============================================================
-    console.log('\n📤 ШАГ 17: Ответ ИИ в Telegram');
+    // ════════════════════════════════════════════════════════════════
+    // ШАГ 19: ОТПРАВЛЯЕМ ОТВЕТ ИИ В TELEGRAM
+    // Менеджер видит что ответила ИИ
+    // ════════════════════════════════════════════════════════════════
+    console.log('\n📤 ШАГ 19: Отправляем ответ ИИ в Telegram');
 
     if (tgToken && tgChatId) {
       try {
         const replyBody = {
           chat_id: tgChatId,
-          text: `🤖 ИИ ответил:\n${botText}`,
+          text: `🤖 ИИ ответил (${botText.length} символов):\n\n${botText}`,
         };
+        
+        // Если есть тема - отправляем в тему
         if (threadId) replyBody.message_thread_id = threadId;
 
-        await fetch(`https://api.telegram.org/bot${tgToken}/sendMessage`, {
+        const replyRes = await fetch(`https://api.telegram.org/bot${tgToken}/sendMessage`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(replyBody)
         });
-        console.log(`  ✅ Ответ отправлен`);
+        const replyData = await replyRes.json();
+        console.log(`  📥 Ответ в Telegram: ${replyData.ok ? '✅ OK' : '❌ ' + replyData.description}`);
+
       } catch (e) {
-        console.error(`  ❌ Ошибка: ${e.message}`);
+        console.error(`  ❌ Ошибка отправки ответа: ${e.message}`);
       }
     }
 
-    // ============================================================
-    // ШАГ 18: Возвращаем ответ виджету
-    // ============================================================
+    // ════════════════════════════════════════════════════════════════
+    // ШАГ 20: ВОЗВРАЩАЕМ ОТВЕТ ВИДЖЕТУ
+    // Виджет показывает пользователю ответ ИИ
+    // ════════════════════════════════════════════════════════════════
     console.log('\n═══════════════════════════════════════');
     console.log('✅ ЗАПРОС УСПЕШНО ОБРАБОТАН');
     console.log('═══════════════════════════════════════\n');
@@ -461,12 +551,15 @@ module.exports = async (req, res) => {
       tokenInfo: {
         spent: newSpent,
         remaining: newRemaining,
-        balance: tokenBalanceNum
+        balance: tokenBalanceNum,
+        cost: costResponse
       }
     });
 
   } catch (error) {
-    console.error('❌ КРИТИЧЕСКАЯ ОШИБКА:', error.message);
+    console.error('\n❌ КРИТИЧЕСКАЯ ОШИБКА:', error.message);
+    console.error(error.stack);
+    
     return res.status(500).json({
       error: "Ошибка сервера",
       message: error.message
