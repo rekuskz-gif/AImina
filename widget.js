@@ -1,19 +1,14 @@
 // ██████████████████████████████████████████████████████████████████████████████
 // ██                                                                          ██
 // ██  ФАЙЛ: widget.js                                                         ██
-// ██  ВЕРСИЯ: 4.7 - С ГЛОБАЛЬНЫМ FIREBASE LISTENER                            ██
+// ██  ВЕРСИЯ: 4.8 - ИСПРАВЛЕННЫЙ (WhatsApp ВНУТРИ openPanel)                 ██
 // ██  НАЗНАЧЕНИЕ: Чат-виджет для вставки на веб-сайты                       ██
 // ██                                                                          ██
-// ██  ✨ НОВОЕ В 4.7:                                                         ██
+// ██  ✨ НОВОЕ В 4.8:                                                         ██
+// ██  🔥 WhatsApp кнопка создаётся ВНУТРИ openPanel (была ошибка в 4.7)      ██
 // ██  🔥 Firebase listener работает ВСЕГДА - даже когда панель закрыта!       ██
 // ██  🔥 Менеджер Reply появляются в реал-тайм синим цветом (manager класс)  ██
 // ██  🔥 Красный значок (!) когда есть новые сообщения и панель закрыта     ██
-// ██                                                                          ██
-// ██  ИСПРАВЛЕНИЯ v4.7:                                                       ██
-// ██  ✨ Добавлен ГЛОБАЛЬНЫЙ слушатель historyRef.on() ВНЕ openPanel()       ██
-// ██     Раньше слушатель был ТОЛЬКО внутри openPanel() - не ловил новые     ██
-// ██  ✨ Счётчик currentMsgCount отслеживает новые сообщения                 ██
-// ██  ✨ Класс .amina-msg.manager для синего цвета ответов менеджера         ██
 // ██                                                                          ██
 // ██  ПОДКЛЮЧЕНИЕ НА САЙТ:                                                    ██
 // ██  <script src="https://ai--mina.vercel.app/widget.js"                     ██
@@ -148,6 +143,8 @@
         .amina-footer { text-align: center; padding: 6px; font-size: 11px; background: white; flex-shrink: 0; }
         .amina-footer a { text-decoration: none; transition: opacity 0.2s; }
         .amina-footer a:hover { opacity: 0.7; }
+        .amina-whatsapp-btn { display: block; padding: 12px; margin: 10px; background: #25D366; color: white; text-align: center; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 14px; cursor: pointer; transition: all 0.2s; box-shadow: 0 2px 8px rgba(37, 211, 102, 0.3); }
+        .amina-whatsapp-btn:hover { opacity: 0.9; transform: scale(1.02); }
     `;
 
     const desktopStyles = `
@@ -245,17 +242,11 @@
             widget.appendChild(btn);
             document.body.appendChild(widget);
 
-            // ════════════════════════════════════════════════════════════════════════════════
-            // ✨ ГЛАВНЫЕ ПЕРЕМЕННЫЕ СОСТОЯНИЯ Блок 1
-            // ════════════════════════════════════════════════════════════════════════════════
             let panel = null;
             let isOpen = false;
             let isLoading = false;
-            let currentMsgCount = chatHistory.length;  // ✨ СЧЁТЧИК НОВЫХ СООБЩЕНИЙ
+            let currentMsgCount = chatHistory.length;
 
-            // ════════════════════════════════════════════════════════════════════════════════
-            // 🔥 ГЛОБАЛЬНЫЙ FIREBASE LISTENER - РАБОТАЕТ ВСЕГДА! Блок 2
-            // ════════════════════════════════════════════════════════════════════════════════
             console.log('🔥 Подключаем глобальный Firebase listener...');
             
             historyRef.on('value', (snap) => {
@@ -264,18 +255,13 @@
                 const val = snap.val();
                 const firebaseHistory = Array.isArray(val) ? val : [];
                 
-                // Проверяем есть ли новые сообщения
                 if (firebaseHistory.length > currentMsgCount) {
                     console.log(`📬 Firebase: НОВЫЕ СООБЩЕНИЯ! Было ${currentMsgCount}, стало ${firebaseHistory.length}`);
                     
-                    // Берём только новые сообщения
                     const newMessages = firebaseHistory.slice(currentMsgCount);
-                    
-                    // Обновляем историю
                     chatHistory = firebaseHistory;
                     currentMsgCount = firebaseHistory.length;
                     
-                    // Если панель открыта - показываем в чате
                     if (isOpen && panel) {
                         console.log(`  ➜ Панель открыта - показываем ${newMessages.length} новых сообщений`);
                         newMessages.forEach(msg => {
@@ -286,7 +272,6 @@
                             }
                         });
                     } else {
-                        // Если панель закрыта - показываем красный значок
                         const hasManagerMsg = newMessages.some(m => m && m.fromManager);
                         if (hasManagerMsg) {
                             console.log(`  ➜ Панель закрыта - показываем красный значок (!)`);
@@ -302,10 +287,6 @@
             });
             
             console.log('✅ Глобальный listener подключен');
-
-            // ════════════════════════════════════════════════════════════════════════════════
-            // ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ Блок 3
-            // ════════════════════════════════════════════════════════════════════════════════
 
             function saveHistory() {
                 historyRef.set(chatHistory).catch(e => console.error('❌ Ошибка сохранения:', e));
@@ -340,10 +321,6 @@
                     panel = null;
                 }, 300);
             }
-
-            // ════════════════════════════════════════════════════════════════════════════════
-            // ОТКРЫТЬ ПАНЕЛЬ Блок 4
-            // ════════════════════════════════════════════════════════════════════════════════
 
             function openPanel() {
                 if (isOpen) return;
@@ -384,6 +361,46 @@
                 `;
                 document.body.appendChild(panel);
 
+                // 📱 ДОБАВЛЯЕМ WHATSAPP КНОПКУ ВНУТРИ openPanel
+                try {
+                    historyRef.once('value', (snap) => {
+                        const data = snap.val();
+                        console.log('📚 Firebase данные:', data);
+                        
+                        if (data && data.dialogNumber && data.whatsappPhone) {
+                            const dialogNum = data.dialogNumber;
+                            const whatsappPhone = data.whatsappPhone;
+                            
+                            console.log(`✅ Найдено: диалог #${dialogNum}, WhatsApp: ${whatsappPhone}`);
+                            
+                            const whatsappText = encodeURIComponent(
+                                `Здравствуйте! Я с сайта.\nНомер диалога: ${dialogNum}`
+                            );
+                            
+                            const whatsappUrl = `https://wa.me/${whatsappPhone}?text=${whatsappText}&utm_source=aimina&utm_medium=dialog&utm_campaign=dialog_${dialogNum}`;
+                            console.log(`📱 WhatsApp ссылка: ${whatsappUrl}`);
+                            
+                            const whatsappBtn = document.createElement('a');
+                            whatsappBtn.href = whatsappUrl;
+                            whatsappBtn.target = '_blank';
+                            whatsappBtn.className = 'amina-whatsapp-btn';
+                            whatsappBtn.innerHTML = `📱 В WhatsApp (Диалог #${dialogNum})`;
+                            
+                            const inputArea = panel.querySelector('.amina-input-area');
+                            if (inputArea) {
+                                inputArea.before(whatsappBtn);
+                                console.log('✅ Кнопка WhatsApp добавлена');
+                            } else {
+                                console.warn('⚠️ inputArea не найдена');
+                            }
+                        } else {
+                            console.warn('⚠️ dialogNumber или whatsappPhone не найдены');
+                        }
+                    });
+                } catch (e) {
+                    console.error('❌ Ошибка WhatsApp:', e.message);
+                }
+
                 if (chatHistory.length > 0) {
                     console.log(`📚 Показываем историю (${chatHistory.length} сообщений)`);
                     chatHistory.forEach(msg => {
@@ -411,10 +428,6 @@
                     if (e.key === 'Enter') sendMsg();
                 });
             }
-
-            // ════════════════════════════════════════════════════════════════════════════════
-            // ОТПРАВИТЬ СООБЩЕНИЕ  Блок 5
-            // ════════════════════════════════════════════════════════════════════════════════
 
             async function sendMsg() {
                 if (isLoading) return;
@@ -488,10 +501,6 @@
                 }
             }
 
-            // ════════════════════════════════════════════════════════════════════════════════
-            // ПЕЧАТЬ ТЕКСТА В ОБЛОЧКЕ Блок 5
-            // ════════════════════════════════════════════════════════════════════════════════
-
             async function typeText() {
                 label.classList.add('visible');
                 console.log('✏️ Начинаем печать текста в облочке...');
@@ -516,24 +525,16 @@
                 console.log('✅ Печать завершена');
             }
 
-            // ════════════════════════════════════════════════════════════════════════════════
-            // ОБРАБОТЧИКИ СОБЫТИЙ Блок 7
-            // ════════════════════════════════════════════════════════════════════════════════
-
             btn.onclick = () => isOpen ? closePanel() : openPanel();
             label.onclick = () => isOpen ? closePanel() : openPanel();
 
             typeText();
             console.log('✅ Виджет инициализирован и готов к использованию!');
 
-        } catch (e) {
-            console.error('❌ Ошибка виджета:', e.message);
+        } catch (error) {
+            console.error('\n❌ ОШИБКА:', error.message);
         }
     }
-
-    // ════════════════════════════════════════════════════════════════════════════════
-    // АВТОЗАПУСК Блок 8
-    // ════════════════════════════════════════════════════════════════════════════════
 
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', initMina);
