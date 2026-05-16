@@ -568,7 +568,7 @@
         .amina-panel { 
             bottom: 100px;
             right: 20px;
-            width: 760px;
+            width: 380px;
             height: 1160px;
             border-radius: 16px;
         }
