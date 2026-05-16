@@ -312,7 +312,7 @@
                     );
                     const whatsappUrl = `https://wa.me/${phone}?text=${whatsappText}`;
                     
-                    return `<a href="${whatsappUrl}" target="_blank" style="color: ##007bff; font-weight: bold; text-decoration: underline; cursor: pointer;">📱 ${match}</a>`;
+                    return `<a href="${whatsappUrl}" target="_blank" style="color: #007bff; font-weight: bold; text-decoration: underline; cursor: pointer;">📱 ${match}</a>`;
                 });
             }
 
