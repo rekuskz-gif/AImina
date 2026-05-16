@@ -264,14 +264,16 @@ const whatsappRef = db.ref(`chats/${clientId}/${sessionId}/whatsappPhone`);
 await whatsappRef.set(whatsappPhone);
 console.log(`  ✅ whatsappPhone ${whatsappPhone} сохранён`);
 
-    // 🔥 СОХРАНЯЕМ ВЕСЬ ДИАЛОГ В FIREBASE (ВСЕГДА!)
+// 🔥 СОХРАНЯЕМ ВЕСЬ ДИАЛОГ В FIREBASE (ВСЕГДА!)
 console.log('\n💾 ШАГ 11.5: Сохраняем диалог в Firebase');
 
 const messagesRef = db.ref(`chats/${clientId}/${sessionId}/messages`);
 try {
+    // 🎯 ГЛАВНОЕ: используем messages (уже приготовлены в ШАГ 1!)
     const simplifiedMessages = messages.map(msg => ({
         role: msg.role,
-        content: msg.content
+        content: msg.content,
+        fromManager: msg.fromManager || false  // 🔥 ДОБАВЛЯЕМ ФЛАГ!
     }));
     await messagesRef.set(simplifiedMessages);
     console.log(`  ✅ Диалог сохранён в Firebase (${simplifiedMessages.length} сообщений)`);
