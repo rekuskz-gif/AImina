@@ -573,11 +573,11 @@
             border-radius: 16px;
         }
         
-        .amina-panel-header-name { font-size: 30px; }
+        .amina-panel-header-name { font-size: 15px; }
         
         .amina-panel-header img { 
-            width: 72px;
-            height: 72px;
+            width: 36px;
+            height: 36px;
         }
     `;
 
