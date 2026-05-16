@@ -308,7 +308,7 @@
                     if (!phone.match(/^7/)) return match;
                     
    const whatsappText = encodeURIComponent(
-    `Здравствуйте! Я с сайта.\nХочу продолжения диалог: ${clientId}  #${dialogNum}`
+    `Здравствуйте! Я с сайта.\n  Диалог номер: ${clientId}  #${dialogNum}`
      );
                     const whatsappUrl = `https://wa.me/${phone}?text=${whatsappText}`;
                     
