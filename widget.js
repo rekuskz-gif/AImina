@@ -1227,7 +1227,22 @@
                 }
 
                 // Подключаем обработчики событий к кнопкам
-                document.getElementById('amina-close').onclick = closePanel;  // кнопка X
+                // ✨ Крестик: используем простую inline функцию вместо closePanel
+                document.getElementById('amina-close').onclick = function() {
+                    console.log('🔒 КРЕСТИК НАЖАТ!');
+                    if (!panel) return;
+                    isOpen = false;
+                    panel.classList.add('closing');
+                    if (historyUnsubscribe) {
+                        historyUnsubscribe();
+                        historyUnsubscribe = null;
+                    }
+                    setTimeout(() => {
+                        if (panel) panel.remove();
+                        panel = null;
+                    }, 300);
+                };
+                
                 document.getElementById('amina-send').onclick = sendMsg;      // кнопка отправки
                 document.getElementById('amina-input').addEventListener('keypress', e => {
                     if (e.key === 'Enter') sendMsg();  // отправить на Enter
@@ -1259,30 +1274,9 @@
             }
 
             // ██████████████████████████████████████████████████████████████████████████████
-            // ██ РАЗДЕЛ 13: ФУНКЦИЯ closePanel()                                          ██
-            // ██ НАЗНАЧЕНИЕ: Закрыть панель чата                                          ██
+            // ██ РАЗДЕЛ 13: ФУНКЦИЯ closePanel() - УДАЛЕНА ДЛЯ ДИАГНОСТИКИ                ██
             // ██████████████████████████████████████████████████████████████████████████████
-
-            function closePanel() {
-                if (!panel) return;
-                isOpen = false;
-                console.log('🔒 Закрываем панель...');
-                
-                // Запускаем анимацию закрытия (slideOut)
-                panel.classList.add('closing');
-                
-                // Отписываемся от Firebase слушателя (останавливаем получение сообщений)
-                if (historyUnsubscribe) {
-                    historyUnsubscribe();
-                    historyUnsubscribe = null;
-                }
-                
-                // Ждём пока закончится анимация (300ms) и удаляем элемент из DOM
-                setTimeout(() => {
-                    if (panel) panel.remove();
-                    panel = null;
-                }, 300);
-            }
+            // Функция закрытия удалена - проверяем что происходит с крестиком
 
             // ██████████████████████████████████████████████████████████████████████████████
             // ██ РАЗДЕЛ 14: ФУНКЦИЯ sendMsg()                                             ██
@@ -1428,10 +1422,46 @@
             // ██████████████████████████████████████████████████████████████████████████████
 
             // При клике на кнопку - открыть/закрыть панель
-            btn.onclick = () => isOpen ? closePanel() : openPanel();
+            btn.onclick = () => {
+                if (isOpen) {
+                    // Закрываем панель
+                    console.log('🔒 КНОПКА ЗАКРЫТЬ!');
+                    if (!panel) return;
+                    isOpen = false;
+                    panel.classList.add('closing');
+                    if (historyUnsubscribe) {
+                        historyUnsubscribe();
+                        historyUnsubscribe = null;
+                    }
+                    setTimeout(() => {
+                        if (panel) panel.remove();
+                        panel = null;
+                    }, 300);
+                } else {
+                    openPanel();
+                }
+            };
             
             // При клике на облочку - открыть/закрыть панель
-            label.onclick = () => isOpen ? closePanel() : openPanel();
+            label.onclick = () => {
+                if (isOpen) {
+                    // Закрываем панель
+                    console.log('🔒 ОБЛОЧКА ЗАКРЫТЬ!');
+                    if (!panel) return;
+                    isOpen = false;
+                    panel.classList.add('closing');
+                    if (historyUnsubscribe) {
+                        historyUnsubscribe();
+                        historyUnsubscribe = null;
+                    }
+                    setTimeout(() => {
+                        if (panel) panel.remove();
+                        panel = null;
+                    }, 300);
+                } else {
+                    openPanel();
+                }
+            };
 
             // ██████████████████████████████████████████████████████████████████████████████
             // ██ РАЗДЕЛ 17: ЗАПУСК ВИДЖЕТА                                                ██
