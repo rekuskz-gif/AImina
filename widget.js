@@ -1279,20 +1279,7 @@
                 
                 // Ждём пока закончится анимация (300ms) и удаляем элемент из DOM
                 setTimeout(() => {
-                    if (panel) {
-                        // ✨ ОЧИЩАЕМ все обработчики событий перед удалением
-                        const closeBtn = panel.querySelector('.amina-panel-close');
-                        const sendBtn = panel.querySelector('.amina-send');
-                        const input = panel.querySelector('.amina-input');
-                        
-                        // Удаляем обработчики
-                        if (closeBtn) closeBtn.onclick = null;
-                        if (sendBtn) sendBtn.onclick = null;
-                        if (input) input.removeEventListener('keypress', sendMsg);
-                        
-                        // Удаляем элемент из DOM
-                        panel.remove();
-                    }
+                    if (panel) panel.remove();
                     panel = null;
                 }, 300);
             }
