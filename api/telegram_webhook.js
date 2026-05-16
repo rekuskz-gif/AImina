@@ -228,10 +228,10 @@ module.exports = async (req, res) => {
     const db = admin.database();
 
     // Читаем историю юзера из Firebase
-    const historyRef = db.ref(`chats/${clientId}/${sessionId}`);
-    const snapshot = await historyRef.once('value');
-    const val = snapshot.val();
-    const historyArray = Array.isArray(val) ? val : [];
+const messagesRef = db.ref(`chats/${clientId}/${sessionId}/messages`);
+const snapshot = await messagesRef.once('value');
+const val = snapshot.val();
+const historyArray = Array.isArray(val) ? val : [];
 
     console.log(`  📖 История загружена: ${historyArray.length} сообщений`);
 
@@ -244,7 +244,7 @@ module.exports = async (req, res) => {
     });
 
     // Сохраняем — виджет автоматически покажет юзеру
-    await historyRef.set(historyArray);
+    await messagesRef.set(historyArray);
     console.log('  ✅ Ответ менеджера сохранён в Firebase');
 
     // Подтверждаем менеджеру
