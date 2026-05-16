@@ -163,21 +163,37 @@ module.exports = async (req, res) => {
       return defaultValue;
     };
 
-    // ================================================================
-    // ШАГ 7: Читаем данные клиента
-    // ================================================================
-    console.log('\n📖 ШАГ 7: Читаем данные');
-    
-    const status          = getByHeader('status');
-    const botName         = getByHeader('bot name');
-    const claudeKey       = getByHeader('claudeapikey');
-    const googleDocId     = getByHeader('google docid');
-    const tgToken         = getByHeader('tgtoken');
-    const tgChatId        = getByHeader('tg chatid');
-    const avatarUrl       = getByHeader('avatarurl');
-    const tokenBalance    = getByHeader('balance');
-    const tokenTariff     = getByHeader('price per char');
-    const tokenSpent      = getByHeader('spent tokens');
+// ================================================================
+// ШАГ 7: Читаем данные клиента
+// ================================================================
+console.log('\n📖 ШАГ 7: Читаем данные');
+
+const status          = getByHeader('status');
+const botName         = getByHeader('bot name');
+const claudeKey       = getByHeader('claudeapikey');
+const googleDocId     = getByHeader('google docid');
+const tgToken         = getByHeader('tgtoken');
+const tgChatId        = getByHeader('tg chatid');
+const avatarUrl       = getByHeader('avatarurl');
+const tokenBalance    = getByHeader('balance');
+const tokenTariff     = getByHeader('price per char');
+const tokenSpent      = getByHeader('spent tokens');
+
+// 🎯 ДОБАВЛЯЕМ WHATSAPP ПЕРЕМЕННУЮ
+let whatsappPhone = '77771234567';
+console.log(`  ✅ whatsappPhone инициализирован (default): ${whatsappPhone}`);
+
+// Логируем все данные
+console.log(`  status: ${status}`);
+console.log(`  botName: ${botName}`);
+console.log(`  claudeKey: ${claudeKey ? '✓ есть' : '✗ нет'}`);
+console.log(`  googleDocId: ${googleDocId || 'нет'}`);
+console.log(`  tgToken: ${tgToken ? '✓ есть' : '✗ нет'}`);
+console.log(`  tgChatId: ${tgChatId || 'нет'}`);
+console.log(`  avatarUrl: ${avatarUrl || 'нет'}`);
+console.log(`  tokenBalance: ${tokenBalance || 0}`);
+console.log(`  tokenTariff: ${tokenTariff || 0}`);
+console.log(`  tokenSpent: ${tokenSpent || 0}`);
 
     // ================================================================
     // ШАГ 8: Проверяем статус
