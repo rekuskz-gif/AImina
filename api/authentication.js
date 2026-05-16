@@ -264,6 +264,22 @@ const whatsappRef = db.ref(`chats/${clientId}/${sessionId}/whatsappPhone`);
 await whatsappRef.set(whatsappPhone);
 console.log(`  ✅ whatsappPhone ${whatsappPhone} сохранён`);
 
+    // 🔥 СОХРАНЯЕМ ВЕСЬ ДИАЛОГ В FIREBASE (ВСЕГДА!)
+console.log('\n💾 ШАГ 11.5: Сохраняем диалог в Firebase');
+
+const messagesRef = db.ref(`chats/${clientId}/${sessionId}/messages`);
+try {
+    const simplifiedMessages = messages.map(msg => ({
+        role: msg.role,
+        content: msg.content
+    }));
+    await messagesRef.set(simplifiedMessages);
+    console.log(`  ✅ Диалог сохранён в Firebase (${simplifiedMessages.length} сообщений)`);
+} catch (e) {
+    console.error(`  ⚠️ Ошибка сохранения: ${e.message}`);
+}
+    
+
 // Создаём Telegram тему если её нет
 if (!threadId && tgToken && tgChatId) {
   try {
@@ -399,18 +415,13 @@ if (whatsappMatch) {
   // Обновляем переменную
   whatsappPhone = newWhatsappPhone;
   
-  // 🔥 СОХРАНЯЕМ В FIREBASE СРАЗУ!
-  try {
-    const whatsappRef = db.ref(`chats/${clientId}/${sessionId}/whatsappPhone`);
-    await whatsappRef.set(whatsappPhone);
-    console.log(`  ✅ Номер WhatsApp обновлён в Firebase: ${whatsappPhone}`);
-  } catch (firebaseErr) {
-    console.error(`  ⚠️ Ошибка сохранения WhatsApp номера: ${firebaseErr.message}`);
-  }
+  // 🔥 СОХРАНЯЕМ В FIREBASE
+  const whatsappRef = db.ref(`chats/${clientId}/${sessionId}/whatsappPhone`);
+  await whatsappRef.set(whatsappPhone);
+  console.log(`  ✅ WhatsApp сохранён в Firebase: ${whatsappPhone}`);
 } else {
   console.log(`  ⚠️ Номер WhatsApp не найден в промпте, используем default: ${whatsappPhone}`);
 }
-// 🎯 КОНЕЦ БЛОКА
     
 
     // ================================================================
