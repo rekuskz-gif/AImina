@@ -1,10 +1,9 @@
 // ============================================================
 // ФАЙЛ: api/telegram_webhook.js
+// ВЕРСИЯ: v2.0 - С ДЕБАГ ЛОГАМИ И ИСПРАВЛЕНИЯМИ
 // НАЗНАЧЕНИЕ: Принимает события из Телеграм:
 // 1. Нажатие кнопок (включить/выключить ИИ, история)
 // 2. Ответы менеджера юзеру через Reply
-// ВАЖНО: answerCallbackQuery вызывается ПЕРВЫМ —
-// Телеграм даёт только 10 секунд на ответ!
 // ============================================================
 
 const admin = require('firebase-admin');
@@ -34,23 +33,36 @@ async function sendTgMessage(tgToken, body) {
 }
 
 module.exports = async (req, res) => {
-  if (req.method !== 'POST') return res.status(200).end();
+  console.log('\n═══════════════════════════════════════════════════');
+  console.log('🔵 TELEGRAM WEBHOOK НАЧАТ');
+  console.log('═══════════════════════════════════════════════════');
+  
+  if (req.method !== 'POST') {
+    console.log('❌ Не POST запрос');
+    return res.status(200).end();
+  }
 
   try {
     const { message, callback_query } = req.body;
+    
+    console.log('📥 Получено от Телеграм:');
+    console.log('  callback_query:', !!callback_query);
+    console.log('  message:', !!message);
 
     // ====================================================
     // БЛОК 1: Обработка нажатия кнопок
     // ====================================================
     if (callback_query) {
+      console.log('\n🔘 БЛОК 1: Нажата кнопка');
+      
       const data = callback_query.data;
       const tgToken = process.env.TG_BOT_TOKEN;
       const db = admin.database();
 
-      console.log('🔍 chat:', JSON.stringify(callback_query.message.chat));
+      console.log(`  callback_data: "${data}"`);
+      console.log(`  chat_id: ${callback_query.message.chat.id}`);
 
       const chatId = String(callback_query.message.chat.id);
-      console.log('🔍 chatId:', chatId);
 
       // Разбираем данные кнопки — формат: action|clientId|sessionId
       const parts = data.split('|');
@@ -58,12 +70,13 @@ module.exports = async (req, res) => {
       const clientId = parts[1];
       const sessionId = parts[2];
 
-      console.log('✅ action:', action, 'clientId:', clientId, 'sessionId:', sessionId);
+      console.log(`  action: "${action}", clientId: "${clientId}", sessionId: "${sessionId}"`);
 
       const aiEnabledRef = db.ref(`settings/${clientId}/${sessionId}/aiEnabled`);
 
       // ---- Кнопка "Выключить ИИ" ----
       if (action === 'off') {
+        console.log('  ➜ Выключаем ИИ');
 
         await fetch(`https://api.telegram.org/bot${tgToken}/answerCallbackQuery`, {
           method: 'POST',
@@ -75,7 +88,7 @@ module.exports = async (req, res) => {
         });
 
         await aiEnabledRef.set(false);
-        console.log('⏸️ ИИ выключен для', clientId, sessionId);
+        console.log('  ✅ Firebase обновлён: aiEnabled = false');
 
         await sendTgMessage(tgToken, {
           chat_id: chatId,
@@ -90,6 +103,7 @@ module.exports = async (req, res) => {
 
       // ---- Кнопка "Включить ИИ" ----
       } else if (action === 'on') {
+        console.log('  ➜ Включаем ИИ');
 
         await fetch(`https://api.telegram.org/bot${tgToken}/answerCallbackQuery`, {
           method: 'POST',
@@ -101,7 +115,7 @@ module.exports = async (req, res) => {
         });
 
         await aiEnabledRef.set(true);
-        console.log('▶️ ИИ включён для', clientId, sessionId);
+        console.log('  ✅ Firebase обновлён: aiEnabled = true');
 
         await sendTgMessage(tgToken, {
           chat_id: chatId,
@@ -116,6 +130,7 @@ module.exports = async (req, res) => {
 
       // ---- Кнопка "История" ----
       } else if (action === 'history') {
+        console.log('  ➜ Загружаем историю');
 
         await fetch(`https://api.telegram.org/bot${tgToken}/answerCallbackQuery`, {
           method: 'POST',
@@ -131,6 +146,8 @@ module.exports = async (req, res) => {
         const val = snap.val();
         const history = Array.isArray(val) ? val : [];
         const last5 = history.slice(-5);
+
+        console.log(`  ✅ История загружена: ${last5.length} сообщений`);
 
         let historyText = `📜 Последние сообщения [${clientId}]:\n\n`;
         last5.forEach(msg => {
@@ -148,51 +165,54 @@ module.exports = async (req, res) => {
           chat_id: chatId,
           text: historyText
         });
-
-      // ---- Кнопка "Статус" ----
-      } else if (action === 'status') {
-        const snap = await aiEnabledRef.once('value');
-        const aiEnabled = snap.val() !== false;
-
-        await fetch(`https://api.telegram.org/bot${tgToken}/answerCallbackQuery`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            callback_query_id: callback_query.id,
-            text: aiEnabled ? '✅ ИИ сейчас активен' : '✅ Менеджер сейчас отвечает'
-          })
-        });
       }
 
+      console.log('═══════════════════════════════════════════════════\n');
       return res.status(200).json({ ok: true });
     }
 
     // ====================================================
     // БЛОК 2: Обработка ответов менеджера юзеру
-    // Срабатывает когда менеджер делает Reply на сообщение юзера
     // ====================================================
-    if (!message || !message.text) return res.status(200).end();
+    if (!message || !message.text) {
+      console.log('  ❌ Нет message или text');
+      return res.status(200).end();
+    }
 
-    // 🔧 FIX: Пропускаем анонимные ответы от имени группы
-    // Раньше: is_bot блокировал анонимных админов группы
-    // Теперь: блокируем только настоящих ботов у которых нет sender_chat
-    if (message.from && message.from.is_bot && !message.sender_chat) return res.status(200).end();
+    console.log('\n💬 БЛОК 2: Обработка Reply от менеджера');
+    console.log(`  message.text: "${message.text.substring(0, 50)}..."`);
+
+    // Пропускаем ботов
+    if (message.from && message.from.is_bot && !message.sender_chat) {
+      console.log('  ❌ Это бот - пропускаем');
+      return res.status(200).end();
+    }
 
     // Только Reply сообщения
-    if (!message.reply_to_message) return res.status(200).end();
+    if (!message.reply_to_message) {
+      console.log('  ❌ Это не Reply - пропускаем');
+      return res.status(200).end();
+    }
+
+    console.log('  ✅ Это Reply сообщение');
 
     const originalText = message.reply_to_message.text || '';
-    console.log('📨 Reply на:', originalText.substring(0, 100));
+    console.log(`  Ответ на: "${originalText.substring(0, 80)}..."`);
 
+    // ✅ ИСПРАВЛЕННАЯ ИЗВЛЕЧЕНИЕ
     // Извлекаем clientId из текста — формат: [mina_001]
     const clientIdMatch = originalText.match(/\[(.+?)\]/);
+    
     // Извлекаем sessionId из текста — формат: session: user_xxx
+    // Допускаем пробелы после "session:"
     const sessionIdMatch = originalText.match(/session:\s*([^\s\n\r]+)/);
     
-    console.log('🔍 clientId:', clientIdMatch?.[1], 'sessionId:', sessionIdMatch?.[1]);
+    console.log(`  🔍 clientIdMatch: ${clientIdMatch ? clientIdMatch[1] : 'НЕ НАЙДЕН'}`);
+    console.log(`  🔍 sessionIdMatch: ${sessionIdMatch ? sessionIdMatch[1] : 'НЕ НАЙДЕН'}`);
+    console.log(`  🔍 Полный текст для парсинга:\n${originalText}`);
 
     if (!clientIdMatch || !sessionIdMatch) {
-      console.log('❌ Не найден clientId или sessionId');
+      console.log('  ❌ Не найден clientId или sessionId - пропускаем');
       return res.status(200).end();
     }
 
@@ -202,6 +222,9 @@ module.exports = async (req, res) => {
     const tgToken = process.env.TG_BOT_TOKEN;
     const chatId = String(message.chat.id);
 
+    console.log(`  ✅ Найдено! clientId: "${clientId}", sessionId: "${sessionId}"`);
+    console.log(`  📝 Ответ менеджера: "${managerText}"`);
+
     const db = admin.database();
 
     // Читаем историю юзера из Firebase
@@ -209,6 +232,8 @@ module.exports = async (req, res) => {
     const snapshot = await historyRef.once('value');
     const val = snapshot.val();
     const historyArray = Array.isArray(val) ? val : [];
+
+    console.log(`  📖 История загружена: ${historyArray.length} сообщений`);
 
     // Добавляем ответ менеджера
     // fromManager: true — виджет показывает синим цветом
@@ -220,7 +245,7 @@ module.exports = async (req, res) => {
 
     // Сохраняем — виджет автоматически покажет юзеру
     await historyRef.set(historyArray);
-    console.log('✅ Ответ менеджера сохранён');
+    console.log('  ✅ Ответ менеджера сохранён в Firebase');
 
     // Подтверждаем менеджеру
     await sendTgMessage(tgToken, {
@@ -228,10 +253,12 @@ module.exports = async (req, res) => {
       text: '✅ Ответ отправлен юзеру!'
     });
 
+    console.log('═══════════════════════════════════════════════════\n');
     return res.status(200).json({ ok: true });
 
   } catch (error) {
-    console.error('❌ Webhook error:', error.message);
+    console.error('❌ WEBHOOK ERROR:', error.message);
+    console.error(error.stack);
     return res.status(200).end();
   }
 };
