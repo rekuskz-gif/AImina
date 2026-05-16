@@ -347,7 +347,7 @@
             }
 
             // ════════════════════════════════════════════════════════════════════
-            // БЛОК 4: ОСТАЛЬНЫЕ ФУНКЦИИ (не менять)
+            // БЛОК 4: ОСТАЛЬНЫЕ ФУНКЦИИ (исправленный)
             // ════════════════════════════════════════════════════════════════════
 
             function scrollDown() {
@@ -406,11 +406,24 @@
                 `;
                 document.body.appendChild(panel);
 
+                // 🎯 ИСПРАВЛЕННАЯ ЛОГИКА ВЫВОДА ИСТОРИИ
                 if (chatHistory.length > 0) {
                     console.log(`📚 Показываем историю (${chatHistory.length} сообщений)`);
                     chatHistory.forEach(msg => {
                         if (!msg || msg.role === 'system') return;
-                        const type = msg.fromManager ? 'manager' : (msg.role === 'assistant' ? 'bot' : 'user');
+                        
+                        // 🔥 ПРАВИЛЬНО ОПРЕДЕЛЯЕМ ТИП СООБЩЕНИЯ
+                        let type = 'user';
+                        if (msg.fromManager === true) {
+                            type = 'manager';
+                            console.log(`  📨 Менеджер: ${msg.content.substring(0, 50)}...`);
+                        } else if (msg.role === 'assistant') {
+                            type = 'bot';
+                            console.log(`  🤖 Бот: ${msg.content.substring(0, 50)}...`);
+                        } else {
+                            console.log(`  👤 Пользователь: ${msg.content.substring(0, 50)}...`);
+                        }
+                        
                         addMsg(msg.content, type);
                     });
                 } else if (chatConfig.welcomeMsg) {
@@ -540,12 +553,3 @@
             console.error('\n❌ ОШИБКА:', error.message);
         }
     }
-
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', initMina);
-        console.log('⏳ Ждём загрузки страницы...');
-    } else {
-        initMina();
-    }
-
-})();
