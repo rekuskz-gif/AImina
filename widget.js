@@ -1228,20 +1228,28 @@
 
                 // Подключаем обработчики событий к кнопкам
                 // ✨ Крестик: используем простую inline функцию вместо closePanel
-                document.getElementById('amina-close').onclick = function() {
-                    console.log('🔒 КРЕСТИК НАЖАТ!');
-                    if (!panel) return;
-                    isOpen = false;
-                    panel.classList.add('closing');
-                    if (historyUnsubscribe) {
-                        historyUnsubscribe();
-                        historyUnsubscribe = null;
-                    }
-                    setTimeout(() => {
-                        if (panel) panel.remove();
-                        panel = null;
-                    }, 300);
-                };
+                const closeButton = document.getElementById('amina-close');
+                console.log('📌 Крестик найден?', closeButton ? 'ДА ✅' : 'НЕТ ❌');
+                
+                if (closeButton) {
+                    closeButton.onclick = function(e) {
+                        console.log('🔒 КРЕСТИК НАЖАТ!', e);
+                        if (!panel) return;
+                        isOpen = false;
+                        panel.classList.add('closing');
+                        if (historyUnsubscribe) {
+                            historyUnsubscribe();
+                            historyUnsubscribe = null;
+                        }
+                        setTimeout(() => {
+                            if (panel) panel.remove();
+                            panel = null;
+                        }, 300);
+                    };
+                    console.log('✅ Обработчик крестика подключен');
+                } else {
+                    console.error('❌ КРЕСТИК НЕ НАЙДЕН!');
+                }
                 
                 document.getElementById('amina-send').onclick = sendMsg;      // кнопка отправки
                 document.getElementById('amina-input').addEventListener('keypress', e => {
