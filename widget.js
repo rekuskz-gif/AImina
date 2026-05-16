@@ -557,7 +557,7 @@
         
         @keyframes pulse-desktop {
             0% { box-shadow: 0 0 0 0 rgba(0,0,0,0.2); }
-            70% { box-shadow: 0 0 0 92px rgba(0,0,0,0); }
+            70% { box-shadow: 0 0 0 60px rgba(0,0,0,0); }
             100% { box-shadow: 0 0 0 0 rgba(0,0,0,0); }
         }
         
@@ -609,7 +609,7 @@
         
         @keyframes pulse-mobile {
             0% { box-shadow: 0 0 0 0 rgba(0,0,0,0.2); }
-            70% { box-shadow: 0 0 0 92px rgba(0,0,0,0); }
+            70% { box-shadow: 0 0 0 60px rgba(0,0,0,0); }
             100% { box-shadow: 0 0 0 0 rgba(0,0,0,0); }
         }
         
