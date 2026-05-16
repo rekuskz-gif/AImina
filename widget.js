@@ -1,23 +1,17 @@
 // ██████████████████████████████████████████████████████████████████████████████
 // ██                                                                          ██
 // ██  ФАЙЛ: widget.js                                                         ██
-// ██  ВЕРСИЯ: 4.8 - ИСПРАВЛЕННЫЙ (WhatsApp ВНУТРИ openPanel)                 ██
-// ██  НАЗНАЧЕНИЕ: Чат-виджет для вставки на веб-сайты                       ██
-// ██                                                                          ██
-// ██  ✨ НОВОЕ В 4.8:                                                         ██
-// ██  🔥 WhatsApp кнопка создаётся ВНУТРИ openPanel (была ошибка в 4.7)      ██
-// ██  🔥 Firebase listener работает ВСЕГДА - даже когда панель закрыта!       ██
-// ██  🔥 Менеджер Reply появляются в реал-тайм синим цветом (manager класс)  ██
-// ██  🔥 Красный значок (!) когда есть новые сообщения и панель закрыта     ██
-// ██                                                                          ██
-// ██  ПОДКЛЮЧЕНИЕ НА САЙТ:                                                    ██
-// ██  <script src="https://ai--mina.vercel.app/widget.js"                     ██
-// ██          data-client-id="mina_001"></script>                             ██
+// ██  ВЕРСИЯ: 5.2 - ПОЛНЫЙ КОД НА БЛОКАХ                                     ██
+// ██  НОМЕР WHATSAPP ЛОВИТ С ПРОБЕЛАМИ, ПЛЮСОМ, СКОБКАМИ                     ██
 // ██                                                                          ██
 // ██████████████████████████████████████████████████████████████████████████████
 
 (function() {
     'use strict';
+
+    // ════════════════════════════════════════════════════════════════════════════
+    // БЛОК 0: ИНИЦИАЛИЗАЦИЯ (не трогать!)
+    // ════════════════════════════════════════════════════════════════════════════
 
     const scriptTag = document.currentScript;
     const clientId = scriptTag.getAttribute('data-client-id') || 'mina_001';
@@ -101,6 +95,10 @@
         }
     }
 
+    // ════════════════════════════════════════════════════════════════════════════
+    // БЛОК 1: CSS СТИЛИ (не трогать!)
+    // ════════════════════════════════════════════════════════════════════════════
+
     const baseStyles = `
         @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(0,0,0,0.2); } 70% { box-shadow: 0 0 0 15px rgba(0,0,0,0); } 100% { box-shadow: 0 0 0 0 rgba(0,0,0,0); } }
         @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
@@ -130,6 +128,8 @@
         .amina-msg.bot { align-self: flex-start; background: white; color: #333; border-bottom-left-radius: 4px; box-shadow: 0 1px 2px rgba(0,0,0,0.1); }
         .amina-msg.user { align-self: flex-end; color: white; border-bottom-right-radius: 4px; }
         .amina-msg.manager { align-self: flex-start; background: #e3f2fd; color: #333; border-bottom-left-radius: 4px; box-shadow: 0 1px 2px rgba(0,0,0,0.1); border-left: 3px solid #2196F3; }
+        .amina-msg a { color: #25D366; font-weight: bold; text-decoration: underline; cursor: pointer; }
+        .amina-msg a:hover { opacity: 0.8; }
         .amina-typing { display: flex; gap: 4px; align-self: flex-start; padding: 12px 16px; background: white; border-radius: 18px; border-bottom-left-radius: 4px; }
         .amina-typing span { width: 7px; height: 7px; background: #999; border-radius: 50%; animation: typingDot 1.4s infinite; }
         .amina-typing span:nth-child(2) { animation-delay: 0.2s; }
@@ -143,8 +143,6 @@
         .amina-footer { text-align: center; padding: 6px; font-size: 11px; background: white; flex-shrink: 0; }
         .amina-footer a { text-decoration: none; transition: opacity 0.2s; }
         .amina-footer a:hover { opacity: 0.7; }
-        .amina-whatsapp-btn { display: block; padding: 12px; margin: 10px; background: #25D366; color: white; text-align: center; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 14px; cursor: pointer; transition: all 0.2s; box-shadow: 0 2px 8px rgba(37, 211, 102, 0.3); }
-        .amina-whatsapp-btn:hover { opacity: 0.9; transform: scale(1.02); }
     `;
 
     const desktopStyles = `
@@ -292,18 +290,65 @@
                 historyRef.set(chatHistory).catch(e => console.error('❌ Ошибка сохранения:', e));
             }
 
+            // ════════════════════════════════════════════════════════════════════
+            // БЛОК 2: ФУНКЦИЯ КОНВЕРТАЦИИ НОМЕРОВ WHATSAPP (улучшенная)
+            // ════════════════════════════════════════════════════════════════════
+
+            function convertPhonesToWhatsAppLinks(text, dialogNum) {
+                if (!text) return text;
+                
+                // 🎯 УЛУЧШЕННЫЙ REGEX - ловит номера с пробелами, плюсом, скобками
+                const phoneRegex = /\+?7?[\s\-\(\)]?7[\s\-\(\)]?0[\s\-\(\)]?7[\s\-\(\)]?\d[\s\-\(\)]?\d[\s\-\(\)]?\d[\s\-\(\)]?\d[\s\-\(\)]?\d[\s\-\(\)]?\d[\s\-\(\)]?\d[\s\-\(\)]?\d|(\d{10,})/g;
+                
+                return text.replace(phoneRegex, (match) => {
+                    // Очищаем номер - убираем всё кроме цифр
+                    const phone = match.replace(/\D/g, '');
+                    
+                    // Проверяем что это номер казахстана (начинается с 7)
+                    if (!phone.match(/^7/)) return match;
+                    
+                    const whatsappText = encodeURIComponent(
+                        `Здравствуйте! Я с сайта.\nНомер диалога: #${dialogNum}`
+                    );
+                    const whatsappUrl = `https://wa.me/${phone}?text=${whatsappText}`;
+                    
+                    return `<a href="${whatsappUrl}" target="_blank" style="color: #25D366; font-weight: bold; text-decoration: underline; cursor: pointer;">📱 ${match}</a>`;
+                });
+            }
+
+            // ════════════════════════════════════════════════════════════════════
+            // БЛОК 3: ФУНКЦИЯ ДОБАВЛЕНИЯ СООБЩЕНИЙ (с HTML поддержкой)
+            // ════════════════════════════════════════════════════════════════════
+
             function addMsg(text, type) {
                 const msgs = document.getElementById('amina-messages');
                 if (!msgs) return;
                 const div = document.createElement('div');
                 div.className = `amina-msg ${type}`;
-                div.innerText = text;
+                
+                // 🎯 Для ботов и менеджеров - превращаем номера в ссылки
+                if (type === 'bot' || type === 'manager') {
+                    // Получаем последнее значение dialogNum из Firebase
+                    historyRef.once('value', (snap) => {
+                        const data = snap.val();
+                        const currentDialogNum = (data && data.dialogNumber) ? data.dialogNumber : 0;
+                        div.innerHTML = convertPhonesToWhatsAppLinks(text, currentDialogNum);
+                    });
+                } else {
+                    // Для пользователя - обычный текст (без HTML)
+                    div.innerText = text;
+                }
+                
                 if (type === 'user') {
                     div.style.background = `linear-gradient(135deg, ${config.colorStart || '#007bff'}, ${config.colorEnd || '#0056b3'})`;
                 }
                 msgs.appendChild(div);
                 scrollDown();
             }
+
+            // ════════════════════════════════════════════════════════════════════
+            // БЛОК 4: ОСТАЛЬНЫЕ ФУНКЦИИ (не менять)
+            // ════════════════════════════════════════════════════════════════════
 
             function scrollDown() {
                 const msgs = document.getElementById('amina-messages');
@@ -360,46 +405,6 @@
                     ${footerHtml}
                 `;
                 document.body.appendChild(panel);
-
-                // 📱 ДОБАВЛЯЕМ WHATSAPP КНОПКУ ВНУТРИ openPanel
-                try {
-                    historyRef.once('value', (snap) => {
-                        const data = snap.val();
-                        console.log('📚 Firebase данные:', data);
-                        
-                        if (data && data.dialogNumber && data.whatsappPhone) {
-                            const dialogNum = data.dialogNumber;
-                            const whatsappPhone = data.whatsappPhone;
-                            
-                            console.log(`✅ Найдено: диалог #${dialogNum}, WhatsApp: ${whatsappPhone}`);
-                            
-                            const whatsappText = encodeURIComponent(
-                                `Здравствуйте! Я с сайта.\nНомер диалога: ${dialogNum}`
-                            );
-                            
-                            const whatsappUrl = `https://wa.me/${whatsappPhone}?text=${whatsappText}&utm_source=aimina&utm_medium=dialog&utm_campaign=dialog_${dialogNum}`;
-                            console.log(`📱 WhatsApp ссылка: ${whatsappUrl}`);
-                            
-                            const whatsappBtn = document.createElement('a');
-                            whatsappBtn.href = whatsappUrl;
-                            whatsappBtn.target = '_blank';
-                            whatsappBtn.className = 'amina-whatsapp-btn';
-                            whatsappBtn.innerHTML = `📱 В WhatsApp (Диалог #${dialogNum})`;
-                            
-                            const inputArea = panel.querySelector('.amina-input-area');
-                            if (inputArea) {
-                                inputArea.before(whatsappBtn);
-                                console.log('✅ Кнопка WhatsApp добавлена');
-                            } else {
-                                console.warn('⚠️ inputArea не найдена');
-                            }
-                        } else {
-                            console.warn('⚠️ dialogNumber или whatsappPhone не найдены');
-                        }
-                    });
-                } catch (e) {
-                    console.error('❌ Ошибка WhatsApp:', e.message);
-                }
 
                 if (chatHistory.length > 0) {
                     console.log(`📚 Показываем историю (${chatHistory.length} сообщений)`);
