@@ -187,8 +187,8 @@ module.exports = async (req, res) => {
     // Извлекаем clientId из текста — формат: [mina_001]
     const clientIdMatch = originalText.match(/\[(.+?)\]/);
     // Извлекаем sessionId из текста — формат: session: user_xxx
-    const sessionIdMatch = originalText.match(/session: ([^\s\n\r]+)/);
-
+    const sessionIdMatch = originalText.match(/session:\s*([^\s\n\r]+)/);
+    
     console.log('🔍 clientId:', clientIdMatch?.[1], 'sessionId:', sessionIdMatch?.[1]);
 
     if (!clientIdMatch || !sessionIdMatch) {
