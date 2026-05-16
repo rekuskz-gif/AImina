@@ -569,7 +569,7 @@
             bottom: 8px;
             right: 20px;
             width: 380px;
-            height: 1160px;
+            height: 460px;
             border-radius: 16px;
         }
         
