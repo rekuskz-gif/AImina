@@ -393,7 +393,7 @@
         /* Фиксирован внизу справа экрана и всегда видим */
         .amina-widget { 
             position: fixed;            /* прилипает к экрану, не зависит от скроллинга */
-            z-index: 9999;              /* выше почти всего на странице */
+            z-index: 999999;            /* ✨ ВЫШЕ ВСЕХ виджетов (даже других чатов) */
             display: flex;              /* элементы в ряд (flex container) */
             align-items: center;        /* выравнивание по центру вертикально */
             gap: 10px;                  /* расстояние 10px между кнопкой и облочкой */
@@ -493,7 +493,7 @@
             position: fixed;            /* прилипает к экрану */
             background: white;          /* белый фон */
             box-shadow: 0 -4px 30px rgba(0,0,0,0.15); /* тень слева/справа */
-            z-index: 99999;             /* выше всего включая виджета */
+            z-index: 9999999;           /* ✨ ВЫШЕ ВСЕХ (почти максимум) */
             display: flex;              /* flex для вертикального расположения элементов */
             flex-direction: column;     /* элементы расположены вертикально (сверху вниз) */
             overflow: hidden;           /* обрезаем содержимое за границами панели */
@@ -516,7 +516,7 @@
             gap: 10px;                  /* расстояние 10px между элементами */
             flex-shrink: 0;             /* не сжимается при скроллинге */
             position: relative;         /* ✨ для z-index */
-            z-index: 99998;             /* ✨ выше содержимого панели */
+            z-index: 9999998;           /* ✨ выше содержимого панели */
             pointer-events: auto;       /* ✨ клики работают */
         }
         
@@ -545,7 +545,7 @@
             transition: opacity 0.2s;   /* плавное изменение видимости */
             font-size: 22px;            /* размер иконы крупный */
             pointer-events: auto;       /* ✨ УБЕДИТЬСЯ что клики работают */
-            z-index: 100000;            /* ✨ ВЫШЕ всего */
+            z-index: 9999999;           /* ✨ ВЫШЕ ВСЕГО */
         }
         
         /* При наведении кнопка становится полностью видимой */
@@ -1279,7 +1279,20 @@
                 
                 // Ждём пока закончится анимация (300ms) и удаляем элемент из DOM
                 setTimeout(() => {
-                    if (panel) panel.remove();
+                    if (panel) {
+                        // ✨ ОЧИЩАЕМ все обработчики событий перед удалением
+                        const closeBtn = panel.querySelector('.amina-panel-close');
+                        const sendBtn = panel.querySelector('.amina-send');
+                        const input = panel.querySelector('.amina-input');
+                        
+                        // Удаляем обработчики
+                        if (closeBtn) closeBtn.onclick = null;
+                        if (sendBtn) sendBtn.onclick = null;
+                        if (input) input.removeEventListener('keypress', sendMsg);
+                        
+                        // Удаляем элемент из DOM
+                        panel.remove();
+                    }
                     panel = null;
                 }, 300);
             }
