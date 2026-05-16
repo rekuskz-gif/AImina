@@ -2,6 +2,7 @@
 // ФАЙЛ: widget.js (ГЛАВНЫЙ)
 // НАЗНАЧЕНИЕ: Точка входа виджета
 // Определяет Desktop/Mobile и загружает нужные компоненты
+// С ОБЛОЧКОЙ НА МОБИЛКЕ!
 // ============================================================
 
 (function() {
@@ -144,7 +145,7 @@
         .amina-panel-header { padding: 14px 16px; color: white; display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
         .amina-panel-header img { border-radius: 50%; border: 2px solid rgba(255,255,255,0.4); object-fit: cover; flex-shrink: 0; }
         .amina-panel-header-name { font-weight: bold; flex: 1; }
-        .amina-panel-close { background: none; border: none; color: white; cursor: pointer; padding: 0; opacity: 0.8; transition: opacity 0.2s; }
+        .amina-panel-close { background: none; border: none; color: white; cursor: pointer; padding: 0; opacity: 0.8; transition: opacity 0.2s; font-size: 22px; }
         .amina-panel-close:hover { opacity: 1; }
         .amina-messages { flex: 1; overflow-y: auto; padding: 15px; display: flex; flex-direction: column; gap: 10px; background: #f0f2f5; }
         .amina-msg { padding: 10px 14px; border-radius: 18px; max-width: 80%; font-size: 14px; line-height: 1.4; word-wrap: break-word; animation: fadeInMsg 0.3s ease; }
@@ -158,7 +159,7 @@
         .amina-input-area { padding: 12px; background: white; display: flex; gap: 8px; border-top: 1px solid #eee; flex-shrink: 0; }
         .amina-input { flex: 1; padding: 10px 14px; border: 1px solid #ddd; border-radius: 22px; outline: none; font-size: 14px; font-family: inherit; transition: border-color 0.2s; }
         .amina-input:focus { border-color: #007bff; }
-        .amina-send { border: none; color: white; border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 16px; flex-shrink: 0; transition: opacity 0.2s; }
+        .amina-send { border: none; color: white; border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 16px; flex-shrink: 0; transition: opacity 0.2s; width: 38px; height: 38px; }
         .amina-send:hover { opacity: 0.9; }
         .amina-send:disabled { opacity: 0.5; cursor: not-allowed; }
         .amina-footer { text-align: center; padding: 6px; font-size: 11px; background: white; flex-shrink: 0; }
@@ -177,13 +178,14 @@
         .amina-panel-header img { width: 36px; height: 36px; }
     `;
 
-    // Mobile стили
+    // Mobile стили - С ОБЛОЧКОЙ!
     const mobileStyles = `
         .amina-widget { bottom: 10px; right: 10px; }
         .amina-btn { width: 50px; height: 50px; }
         .amina-btn img { width: 42px; height: 42px; }
         .amina-badge { width: 16px; height: 16px; font-size: 10px; }
-        .amina-label { display: none !important; }
+        .amina-label { max-width: 110px; font-size: 11px; padding: 8px 12px; }
+        .amina-label .amina-name { font-size: 10px; }
         .amina-panel { bottom: 0; right: 0; left: 0; top: auto; width: 100%; height: 100%; max-height: 90vh; border-radius: 16px 16px 0 0; }
         .amina-panel-header-name { font-size: 14px; }
         .amina-panel-header img { width: 32px; height: 32px; }
