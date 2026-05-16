@@ -371,7 +371,6 @@ if (!threadId && tgToken && tgChatId) {
 console.log('\n📄 ШАГ 14: Читаем промпт');
 
 let systemPrompt = 'Ты полезный помощник. Отвечай кратко.';
-// ❌ УДАЛИТЬ: let whatsappPhone = '77771234567';
 
 if (googleDocId) {
   try {
@@ -385,18 +384,34 @@ if (googleDocId) {
       .join('')
       .trim();
     
-    // 🎯 ПАРСИМ ВАТЦАП - ОБНОВЛЯЕМ (без let!)
-    const whatsappMatch = systemPrompt.match(/\d{10,}/);
-    if (whatsappMatch) {
-      whatsappPhone = whatsappMatch[0];  // ← БЕЗ let!
-      console.log(`  📱 WhatsApp найден: ${whatsappPhone}`);
-    }
-    
     console.log(`  ✅ Загружен (${systemPrompt.length} символов)`);
   } catch (e) {
     console.error(`  Ошибка: ${e.message}`);
   }
 }
+
+// 🎯 БЛОК: ПАРСИМ НОМЕР И СОХРАНЯЕМ В FIREBASE
+const whatsappMatch = systemPrompt.match(/\d{10,}/);
+if (whatsappMatch) {
+  const newWhatsappPhone = whatsappMatch[0];
+  console.log(`  📱 WhatsApp найден в промпте: ${newWhatsappPhone}`);
+  
+  // Обновляем переменную
+  whatsappPhone = newWhatsappPhone;
+  
+  // 🔥 СОХРАНЯЕМ В FIREBASE СРАЗУ!
+  try {
+    const whatsappRef = db.ref(`chats/${clientId}/${sessionId}/whatsappPhone`);
+    await whatsappRef.set(whatsappPhone);
+    console.log(`  ✅ Номер WhatsApp обновлён в Firebase: ${whatsappPhone}`);
+  } catch (firebaseErr) {
+    console.error(`  ⚠️ Ошибка сохранения WhatsApp номера: ${firebaseErr.message}`);
+  }
+} else {
+  console.log(`  ⚠️ Номер WhatsApp не найден в промпте, используем default: ${whatsappPhone}`);
+}
+// 🎯 КОНЕЦ БЛОКА
+    
 
     // ================================================================
     // ШАГ 15: Подготавливаем историю
