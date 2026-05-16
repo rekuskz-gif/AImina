@@ -516,20 +516,82 @@
                 console.log('✅ Печать завершена');
             }
 
-            // ════════════════════════════════════════════════════════════════════════════════
-            // ОБРАБОТЧИКИ СОБЫТИЙ Блок 7
-            // ════════════════════════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════════════════════════
+// ОБРАБОТЧИКИ СОБЫТИЙ Блок 7 - ИЗМЕНЕННЫЙ
+// ════════════════════════════════════════════════════════════════════════════════
 
-            btn.onclick = () => isOpen ? closePanel() : openPanel();
-            label.onclick = () => isOpen ? closePanel() : openPanel();
+btn.onclick = () => isOpen ? closePanel() : openPanel();
+label.onclick = () => isOpen ? closePanel() : openPanel();
 
-            typeText();
-            console.log('✅ Виджет инициализирован и готов к использованию!');
+// 📱 ДОБАВЛЯЕМ WHATSAPP LISTENER В openPanel
+// Добавляем в конец openPanel перед typeText()
 
-        } catch (e) {
-            console.error('❌ Ошибка виджета:', e.message);
+// СЛУШАЕМ FIREBASE И ДОБАВЛЯЕМ КНОПКУ WHATSAPP
+historyRef.once('value', (snap) => {
+    const data = snap.val();
+    
+    console.log('📚 Firebase данные:', data);
+    
+    if (data && data.dialogNumber && data.whatsappPhone) {
+        const dialogNum = data.dialogNumber;
+        const whatsappPhone = data.whatsappPhone;
+        
+        console.log(`✅ Найдено: диалог #${dialogNum}, WhatsApp: ${whatsappPhone}`);
+        
+        // Генерируем текст
+        const whatsappText = encodeURIComponent(
+            `Здравствуйте! Я с сайта.\nНомер диалога: ${dialogNum}`
+        );
+        
+        const whatsappUrl = `https://wa.me/${whatsappPhone}?text=${whatsappText}&utm_source=aimina&utm_medium=dialog&utm_campaign=dialog_${dialogNum}`;
+        
+        console.log(`📱 WhatsApp ссылка: ${whatsappUrl}`);
+        
+        // Создаём кнопку
+        const whatsappBtn = document.createElement('a');
+        whatsappBtn.href = whatsappUrl;
+        whatsappBtn.target = '_blank';
+        whatsappBtn.innerHTML = `📱 В WhatsApp (Диалог #${dialogNum})`;
+        whatsappBtn.style.cssText = `
+            display: block;
+            padding: 12px;
+            margin: 10px;
+            background: #25D366;
+            color: white;
+            text-align: center;
+            text-decoration: none;
+            border-radius: 8px;
+            font-weight: bold;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.2s;
+            box-shadow: 0 2px 8px rgba(37, 211, 102, 0.3);
+        `;
+        
+        whatsappBtn.onmouseover = () => {
+            whatsappBtn.style.opacity = '0.9';
+            whatsappBtn.style.transform = 'scale(1.02)';
+        };
+        whatsappBtn.onmouseout = () => {
+            whatsappBtn.style.opacity = '1';
+            whatsappBtn.style.transform = 'scale(1)';
+        };
+        
+        // Добавляем перед полем ввода
+        const inputArea = panel.querySelector('.amina-input-area');
+        if (inputArea) {
+            inputArea.before(whatsappBtn);
+            console.log('✅ Кнопка WhatsApp добавлена');
+        } else {
+            console.error('❌ inputArea не найдена!');
         }
+    } else {
+        console.warn('⚠️ dialogNumber или whatsappPhone не найдены');
     }
+});
+
+typeText();
+console.log('✅ Виджет инициализирован и готов к использованию!');
 
     // ════════════════════════════════════════════════════════════════════════════════
     // АВТОЗАПУСК Блок 8
