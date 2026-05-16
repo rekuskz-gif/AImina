@@ -263,7 +263,7 @@
                     if (isOpen && panel) {
                         console.log(`  ➜ Панель открыта - показываем ${newMessages.length} новых сообщений`);
                         newMessages.forEach(msg => {
-                            if (!msg) return;
+                            if (!msgs) return;
                             if (msg.fromManager) {
                                 console.log(`  📨 МЕНЕДЖЕР: ${msg.content.substring(0, 50)}...`);
                                 addMsg(msg.content, 'manager');
