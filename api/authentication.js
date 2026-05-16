@@ -1,14 +1,16 @@
-// ============================================================
-// ФАЙЛ: api/telegram_webhook.js
-// НАЗНАЧЕНИЕ: Принимает события из Телеграм:
-// 1. Нажатие кнопок (включить/выключить ИИ, история)
-// 2. Ответы менеджера юзеру через Reply
-// ВАЖНО: answerCallbackQuery вызывается ПЕРВЫМ —
-// Телеграм даёт только 10 секунд на ответ!
+/ ============================================================
+// ФАЙЛ: api/authentication.js
+// ВЕРСИЯ: v3.6 - ЦЕЛЫЕ ЧИСЛА + БАЛАНС В ТЕЛЕГРАМ
 // ============================================================
 
+const { GoogleSpreadsheet } = require('google-spreadsheet');
+const { JWT } = require('google-auth-library');
+const { google } = require('googleapis');
 const admin = require('firebase-admin');
 
+// ============================================================
+// ИНИЦИАЛИЗАЦИЯ: Firebase Admin SDK
+// ============================================================
 if (!admin.apps.length) {
   admin.initializeApp({
     credential: admin.credential.cert({
@@ -20,233 +22,454 @@ if (!admin.apps.length) {
   });
 }
 
-// Вспомогательная функция отправки сообщения в Телеграм
-async function sendTgMessage(tgToken, body) {
-  console.log('📤 Отправляем в Телеграм:', JSON.stringify(body));
-  const res = await fetch(`https://api.telegram.org/bot${tgToken}/sendMessage`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body)
-  });
-  const data = await res.json();
-  console.log('📨 Ответ Телеграм:', JSON.stringify(data));
-  return data;
-}
-
 module.exports = async (req, res) => {
-  if (req.method !== 'POST') return res.status(200).end();
+  console.log('═══════════════════════════════════════');
+  console.log('🔵 НАЧАЛО ЗАПРОСА');
+  console.log('═══════════════════════════════════════');
+
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, GET, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+  if (req.method === 'OPTIONS') return res.status(200).end();
 
   try {
-    const { message, callback_query } = req.body;
+    // ============================================================
+    // ШАГ 1: Получаем данные от виджета
+    // ============================================================
+    console.log('\n📥 ШАГ 1: Данные от виджета');
 
-    // ====================================================
-    // БЛОК 1: Обработка нажатия кнопок
-    // ====================================================
-    if (callback_query) {
-      const data = callback_query.data;
-      const tgToken = process.env.TG_BOT_TOKEN;
-      const db = admin.database();
+    const { clientId, sessionId, messages } = req.body;
+    console.log(`  🆔 clientId: "${clientId}"`);
+    console.log(`  📝 sessionId: "${sessionId}"`);
+    console.log(`  💬 Сообщений: ${messages ? messages.length : 0}`);
 
-      console.log('🔍 chat:', JSON.stringify(callback_query.message.chat));
+    if (!clientId || !messages) {
+      return res.status(400).json({ error: "clientId и messages обязательны" });
+    }
 
-      const chatId = String(callback_query.message.chat.id);
-      console.log('🔍 chatId:', chatId);
+    // ============================================================
+    // ШАГ 2: Подключаемся к Google
+    // ============================================================
+    console.log('\n🔐 ШАГ 2: Авторизация Google');
 
-      // Разбираем данные кнопки — формат: action|clientId|sessionId
-      const parts = data.split('|');
-      const action = parts[0];
-      const clientId = parts[1];
-      const sessionId = parts[2];
+    const auth = new JWT({
+      email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
+      key: process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, '\n'),
+      scopes: [
+        'https://www.googleapis.com/auth/spreadsheets',
+        'https://www.googleapis.com/auth/documents.readonly'
+      ],
+    });
 
-      console.log('✅ action:', action, 'clientId:', clientId, 'sessionId:', sessionId);
+    // ============================================================
+    // ШАГ 3: Загружаем Google Sheet
+    // ============================================================
+    console.log('\n📊 ШАГ 3: Загружаем Google Sheet');
 
-      const aiEnabledRef = db.ref(`settings/${clientId}/${sessionId}/aiEnabled`);
+    const doc = new GoogleSpreadsheet(process.env.GOOGLE_SHEET_ID, auth);
+    await doc.loadInfo();
 
-      // ---- Кнопка "Выключить ИИ" ----
-      if (action === 'off') {
+    const sheet = doc.sheetsByTitle['Authentication'];
+    if (!sheet) {
+      return res.status(500).json({ error: "Лист Authentication не найден" });
+    }
 
-        await fetch(`https://api.telegram.org/bot${tgToken}/answerCallbackQuery`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            callback_query_id: callback_query.id,
-            text: '🔴 ИИ выключен!'
-          })
-        });
+    await sheet.loadCells('A1:Z100');
+    console.log(`  ✅ Ячейки загружены`);
 
-        await aiEnabledRef.set(false);
-        console.log('⏸️ ИИ выключен для', clientId, sessionId);
+    // ============================================================
+    // ШАГ 4: Читаем заголовки из строки 1
+    // ============================================================
+    console.log('\n📋 ШАГ 4: Читаем заголовки');
 
-        await sendTgMessage(tgToken, {
-          chat_id: chatId,
-          text: `🔴 ИИ выключен для [${clientId}]\nМенеджер отвечает вручную`,
-          reply_markup: {
-            inline_keyboard: [[
-              { text: '🟢 Включить ИИ', callback_data: `on|${clientId}|${sessionId}` },
-              { text: '📜 История', callback_data: `history|${clientId}|${sessionId}` }
-            ]]
-          }
-        });
+    const headers = {};
+    for (let col = 0; col < sheet.columnCount; col++) {
+      const headerCell = sheet.getCell(0, col).value;
+      if (headerCell) {
+        const key = String(headerCell).toLowerCase().trim();
+        headers[key] = col;
+        console.log(`  [${col}] "${headerCell}"`);
+      }
+    }
 
-      // ---- Кнопка "Включить ИИ" ----
-      } else if (action === 'on') {
+    // ============================================================
+    // ШАГ 5: Ищем клиента
+    // ============================================================
+    console.log(`\n🔍 ШАГ 5: Ищем клиента "${clientId}"`);
 
-        await fetch(`https://api.telegram.org/bot${tgToken}/answerCallbackQuery`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            callback_query_id: callback_query.id,
-            text: '🟢 ИИ включён!'
-          })
-        });
+    const clientIdCol = headers['clientid'];
+    if (clientIdCol === undefined) {
+      return res.status(500).json({ error: "Колонка clientid не найдена" });
+    }
 
-        await aiEnabledRef.set(true);
-        console.log('▶️ ИИ включён для', clientId, sessionId);
+    let foundRow = null;
+    for (let i = 1; i < Math.min(101, sheet.rowCount); i++) {
+      const cellValue = sheet.getCell(i, clientIdCol).value;
+      if (cellValue === clientId) {
+        foundRow = i;
+        console.log(`  ✅ Найден в строке ${i}`);
+        break;
+      }
+    }
 
-        await sendTgMessage(tgToken, {
-          chat_id: chatId,
-          text: `🟢 ИИ включён для [${clientId}]\nБот отвечает автоматически`,
-          reply_markup: {
-            inline_keyboard: [[
-              { text: '🔴 Выключить ИИ', callback_data: `off|${clientId}|${sessionId}` },
-              { text: '📜 История', callback_data: `history|${clientId}|${sessionId}` }
-            ]]
-          }
-        });
+    if (foundRow === null) {
+      return res.status(404).json({ error: `Клиент ${clientId} не найден` });
+    }
 
-      // ---- Кнопка "История" ----
-      } else if (action === 'history') {
+    // ============================================================
+    // ШАГ 6: Функция чтения с fallback на строку 2
+    // Если поле клиента пустое — берём из строки 2
+    // ============================================================
+    const DEFAULT_ROW = 1;
 
-        await fetch(`https://api.telegram.org/bot${tgToken}/answerCallbackQuery`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            callback_query_id: callback_query.id,
-            text: '📜 История загружена!'
-          })
-        });
+    const getByHeader = (headerName) => {
+      const lowerName = String(headerName).toLowerCase().trim();
+      const col = headers[lowerName];
 
-        const historyRef = db.ref(`chats/${clientId}/${sessionId}`);
-        const snap = await historyRef.once('value');
-        const val = snap.val();
-        const history = Array.isArray(val) ? val : [];
-        const last5 = history.slice(-5);
-
-        let historyText = `📜 Последние сообщения [${clientId}]:\n\n`;
-        last5.forEach(msg => {
-          if (!msg) return;
-          if (msg.role === 'user') {
-            historyText += `👤 Юзер: ${msg.content}\n\n`;
-          } else if (msg.fromManager) {
-            historyText += `👨‍💼 Менеджер: ${msg.content}\n\n`;
-          } else {
-            historyText += `🤖 ИИ: ${msg.content}\n\n`;
-          }
-        });
-
-        await sendTgMessage(tgToken, {
-          chat_id: chatId,
-          text: historyText
-        });
-
-      // ---- Кнопка "Статус" ----
-      } else if (action === 'status') {
-        const snap = await aiEnabledRef.once('value');
-        const aiEnabled = snap.val() !== false;
-
-        await fetch(`https://api.telegram.org/bot${tgToken}/answerCallbackQuery`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            callback_query_id: callback_query.id,
-            text: aiEnabled ? '✅ ИИ сейчас активен' : '✅ Менеджер сейчас отвечает'
-          })
-        });
+      if (col === undefined) {
+        console.warn(`  ⚠️ Колонка "${headerName}" не найдена`);
+        return null;
       }
 
-      return res.status(200).json({ ok: true });
+      const clientValue = sheet.getCell(foundRow, col).value;
+      if (clientValue) {
+        console.log(`  📖 ${headerName}: "${clientValue}" (из строки клиента)`);
+        return clientValue;
+      }
+
+      const defaultValue = sheet.getCell(DEFAULT_ROW, col).value;
+      console.log(`  📖 ${headerName}: пусто → "${defaultValue}" (из строки 2)`);
+      return defaultValue;
+    };
+
+    // ============================================================
+    // ШАГ 7: Читаем данные клиента
+    // ============================================================
+    console.log('\n📖 ШАГ 7: Читаем данные клиента');
+
+    const status       = getByHeader('status');
+    const botName      = getByHeader('bot name');
+    const claudeKey    = getByHeader('claudeapikey');
+    const googleDocId  = getByHeader('google docid');
+    const tgToken      = getByHeader('tgtoken');
+    const tgChatId     = getByHeader('tg chatid');
+    const avatarUrl    = getByHeader('avatarurl');
+    const tokenBalance = getByHeader('balance');
+    const tokenTariff  = getByHeader('price per char');
+    const tokenSpent   = getByHeader('spent tokens');
+
+    // ============================================================
+    // ШАГ 8: Проверяем обязательные данные
+    // ============================================================
+    console.log('\n🔐 ШАГ 8: Проверяем данные');
+
+    if (status !== 'active') {
+      console.error(`  ❌ Статус: "${status}"`);
+      return res.status(403).json({ error: "Агент отключен" });
     }
+    console.log(`  ✅ Статус: active`);
 
-    // ====================================================
-    // БЛОК 2: Обработка ответов менеджера юзеру
-    // ====================================================
-    if (!message || !message.text) return res.status(200).end();
-
-    // 🔧 ДИАГНОСТИКА: Логируем всё входящее сообщение целиком
-    // После деплоя напиши ответ в Телеграм и посмотри логи Vercel
-    // Это покажет точно какие поля приходят от анонимного ответа
-    console.log('📨 Входящее сообщение:', JSON.stringify(message));
-
-    // 🔧 FIX: Пропускаем только настоящих ботов
-    // Анонимные админы группы имеют sender_chat — их НЕ блокируем
-    // Настоящие боты имеют is_bot=true и НЕ имеют sender_chat
-    if (message.from && message.from.is_bot && !message.sender_chat) {
-      console.log('🤖 Пропускаем сообщение от бота');
-      return res.status(200).end();
+    if (!claudeKey) {
+      return res.status(500).json({ error: "API ключ Claude не найден" });
     }
+    console.log(`  ✅ Claude ключ: есть`);
 
-    // Только Reply сообщения
-    if (!message.reply_to_message) {
-      console.log('❌ Нет reply_to_message — пропускаем');
-      return res.status(200).end();
-    }
-
-    const originalText = message.reply_to_message.text || '';
-    console.log('📨 Reply на текст:', originalText.substring(0, 200));
-
-    // Извлекаем clientId из текста — формат: [mina_001]
-    const clientIdMatch = originalText.match(/\[(.+?)\]/);
-    // Извлекаем sessionId из текста — формат: session: user_xxx
-    const sessionIdMatch = originalText.match(/session: ([^\s\n\r]+)/);
-
-    console.log('🔍 clientId найден:', clientIdMatch?.[1]);
-    console.log('🔍 sessionId найден:', sessionIdMatch?.[1]);
-
-    if (!clientIdMatch || !sessionIdMatch) {
-      console.log('❌ Не найден clientId или sessionId в тексте');
-      return res.status(200).end();
-    }
-
-    const clientId = clientIdMatch[1];
-    const sessionId = sessionIdMatch[1];
-    const managerText = message.text;
-    const tgToken = process.env.TG_BOT_TOKEN;
-    const chatId = String(message.chat.id);
-
-    console.log('✅ clientId:', clientId);
-    console.log('✅ sessionId:', sessionId);
-    console.log('✅ Текст менеджера:', managerText);
+    // ============================================================
+    // ШАГ 9: Firebase — статус ИИ
+    // ============================================================
+    console.log('\n🔥 ШАГ 9: Firebase — статус ИИ');
 
     const db = admin.database();
+    const aiEnabledRef = db.ref(`settings/${clientId}/${sessionId}/aiEnabled`);
+    const aiEnabledSnap = await aiEnabledRef.once('value');
+    const aiEnabled = aiEnabledSnap.val() !== false;
+    console.log(`  🤖 ИИ включён: ${aiEnabled}`);
 
-    // Читаем историю юзера из Firebase
-    const historyRef = db.ref(`chats/${clientId}/${sessionId}`);
-    const snapshot = await historyRef.once('value');
-    const val = snapshot.val();
-    const historyArray = Array.isArray(val) ? val : [];
+    // ============================================================
+    // ШАГ 10: Номер диалога
+    // ============================================================
+    console.log('\n🔢 ШАГ 10: Номер диалога');
 
-    // Добавляем ответ менеджера
-    // fromManager: true — виджет показывает синим цветом
-    historyArray.push({
-      role: 'assistant',
-      content: managerText,
-      fromManager: true
+    const dialogNumRef = db.ref(`settings/${clientId}/${sessionId}/dialogNum`);
+    const dialogNumSnap = await dialogNumRef.once('value');
+    let dialogNum = dialogNumSnap.val();
+
+    if (!dialogNum) {
+      const allRef = db.ref(`settings/${clientId}`);
+      const allSnap = await allRef.once('value');
+      const all = allSnap.val() || {};
+      dialogNum = Object.keys(all).length;
+      await dialogNumRef.set(dialogNum);
+      console.log(`  ✅ Новый диалог №${dialogNum}`);
+    } else {
+      console.log(`  ℹ️ Диалог №${dialogNum}`);
+    }
+
+    // ============================================================
+    // ШАГ 11: Тема в Telegram
+    // ============================================================
+    console.log('\n📱 ШАГ 11: Тема в Telegram');
+
+    const threadIdRef = db.ref(`settings/${clientId}/${sessionId}/threadId`);
+    const threadIdSnap = await threadIdRef.once('value');
+    let threadId = threadIdSnap.val();
+
+    if (!threadId && tgToken && tgChatId) {
+      try {
+        const topicRes = await fetch(`https://api.telegram.org/bot${tgToken}/createForumTopic`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            chat_id: tgChatId,
+            name: `Диалог #${dialogNum} [${clientId}]`,
+          })
+        });
+        const topicData = await topicRes.json();
+        if (topicData.ok) {
+          threadId = topicData.result.message_thread_id;
+          await threadIdRef.set(threadId);
+          console.log(`  ✅ Тема создана: ${threadId}`);
+        } else {
+          console.warn(`  ⚠️ Ошибка создания темы: ${topicData.description}`);
+        }
+      } catch (e) {
+        console.error(`  ❌ Ошибка: ${e.message}`);
+      }
+    } else {
+      console.log(`  ℹ️ threadId: ${threadId}`);
+    }
+
+    // ============================================================
+    // ШАГ 12: Отправляем сообщение в Telegram
+    // ВАЖНО: [clientId] и session: нужны для Reply менеджера!
+    // Показываем ВЕСЬ диалог чтобы менеджер видел контекст
+    // ============================================================
+    console.log('\n📤 ШАГ 12: Отправляем в Telegram');
+
+    const lastMsg = messages[messages.length - 1];
+    const userText = lastMsg && lastMsg.role === 'user' ? lastMsg.content : null;
+
+    if (tgToken && tgChatId && userText) {
+      try {
+        const statusText = aiEnabled ? '🟢 ИИ активен' : '🔴 Менеджер отвечает';
+
+        // Баланс клиента — показываем менеджеру
+        const balanceNum = parseInt(tokenBalance) || 0;
+        const balanceText = tokenBalance ? `💰 Баланс: ${balanceNum} токенов` : '';
+
+        // Формируем весь диалог для контекста
+        // Показываем последние 10 сообщений чтобы не было слишком длинно
+        const last10 = messages.slice(-10);
+        let dialogText = '';
+        last10.forEach(msg => {
+          if (msg.role === 'user') {
+            dialogText += `👤 Юзер: ${msg.content}\n`;
+          } else if (msg.role === 'assistant') {
+            dialogText += `🤖 ИИ: ${msg.content}\n`;
+          }
+        });
+
+        // ВАЖНО: [${clientId}] и session: нужны для Reply менеджера!
+        const tgText = `💬 Диалог #${dialogNum} [${clientId}]\n\n${dialogText}\n${statusText}${balanceText ? '\n' + balanceText : ''}\nsession: ${sessionId}`;
+
+        const keyboard = aiEnabled ? [[
+          { text: '🔴 Выключить ИИ', callback_data: `off|${clientId}|${sessionId}` },
+          { text: '📜 История', callback_data: `history|${clientId}|${sessionId}` }
+        ]] : [[
+          { text: '🟢 Включить ИИ', callback_data: `on|${clientId}|${sessionId}` },
+          { text: '📜 История', callback_data: `history|${clientId}|${sessionId}` }
+        ]];
+
+        const msgBody = {
+          chat_id: tgChatId,
+          text: tgText,
+          reply_markup: { inline_keyboard: keyboard }
+        };
+
+        if (threadId) msgBody.message_thread_id = threadId;
+
+        const tgRes = await fetch(`https://api.telegram.org/bot${tgToken}/sendMessage`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(msgBody)
+        });
+        const tgData = await tgRes.json();
+        console.log(`  📥 Telegram: ${tgData.ok ? '✅ OK' : '❌ ' + tgData.description}`);
+
+      } catch (e) {
+        console.error(`  ❌ Ошибка Telegram: ${e.message}`);
+      }
+    }
+
+    // Если ИИ выключен — менеджер отвечает вручную
+    if (!aiEnabled) {
+      console.log('  ⏸️ ИИ выключен — менеджер отвечает');
+      return res.status(200).json({
+        text: null,
+        aiDisabled: true,
+        avatarUrl: avatarUrl
+      });
+    }
+    
+    // ============================================================
+    // ШАГ 13: Читаем промпт из Google Doc
+    // ============================================================
+    console.log('\n📄 ШАГ 13: Читаем промпт');
+
+    let systemPrompt = "Ты полезный помощник";
+
+    if (googleDocId) {
+      try {
+        const docsClient = google.docs({ version: 'v1', auth });
+        const docRes = await docsClient.documents.get({ documentId: googleDocId });
+        systemPrompt = docRes.data.body.content
+          .filter(block => block.paragraph)
+          .map(block => block.paragraph.elements
+            .map(el => el.textRun ? el.textRun.content : '')
+            .join(''))
+          .join('')
+          .trim();
+        console.log(`  ✅ Промпт загружен (${systemPrompt.length} символов)`);
+      } catch (e) {
+        console.error(`  ❌ Ошибка: ${e.message}`);
+      }
+    }
+
+    // ============================================================
+    // ШАГ 14: Очищаем историю для Claude
+    // Claude принимает только role и content
+    // ============================================================
+    console.log('\n📝 ШАГ 14: Готовим историю для Claude');
+
+    const cleanMessages = messages.map(msg => ({
+      role: msg.role,
+      content: msg.content
+    }));
+    console.log(`  ✅ ${cleanMessages.length} сообщений`);
+
+    // ============================================================
+    // ШАГ 15: Отправляем в Claude AI
+    // ============================================================
+    console.log('\n🚀 ШАГ 15: Отправляем в Claude');
+
+    const claudeResponse = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': claudeKey,
+        'anthropic-version': '2023-06-01',
+        'content-type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: "claude-haiku-4-5-20251001",
+        max_tokens: 1024,
+        system: systemPrompt,
+        messages: cleanMessages
+      })
     });
 
-    // Сохраняем — виджет автоматически покажет юзеру
-    await historyRef.set(historyArray);
-    console.log('✅ Ответ менеджера сохранён в Firebase');
+    const claudeData = await claudeResponse.json();
 
-    // Подтверждаем менеджеру
-    await sendTgMessage(tgToken, {
-      chat_id: chatId,
-      text: '✅ Ответ отправлен юзеру!'
+    if (!claudeResponse.ok) {
+      console.error(`  ❌ Claude ошибка: ${claudeData.error?.message}`);
+      return res.status(claudeResponse.status).json({
+        error: "Ошибка Claude API",
+        details: claudeData
+      });
+    }
+
+    const botText = claudeData.content[0].text;
+    console.log(`  ✅ Claude ответил (${botText.length} символов)`);
+
+    // ============================================================
+    // ШАГ 16: Считаем токены — только целые числа!
+    // balance — сколько токенов осталось
+    // price per char — сколько токенов стоит 1 символ
+    // spent tokens — сколько токенов потрачено всего
+    // ============================================================
+    console.log('\n💰 ШАГ 16: Токены');
+
+    const tokenBalanceNum = parseInt(tokenBalance) || 0;
+    const tokenTariffNum  = parseInt(tokenTariff)  || 0;
+    const tokenSpentNum   = parseInt(tokenSpent)   || 0;
+
+    // Стоимость ответа в токенах
+    const costResponse = botText.length * tokenTariffNum;
+
+    // Новое значение потраченных токенов
+    const newSpent = tokenSpentNum + costResponse;
+
+    // Новый остаток баланса
+    const newRemaining = tokenBalanceNum - costResponse;
+
+    console.log(`  📊 Символов в ответе: ${botText.length}`);
+    console.log(`  💸 Стоимость: ${costResponse} токенов`);
+    console.log(`  📈 Потрачено всего: ${newSpent} токенов`);
+    console.log(`  💰 Остаток: ${newRemaining} токенов`);
+
+    try {
+      const spentCol   = headers['spent tokens'];
+      const balanceCol = headers['balance'];
+
+      if (spentCol !== undefined) {
+        sheet.getCell(foundRow, spentCol).value = newSpent;
+      }
+      if (balanceCol !== undefined) {
+        sheet.getCell(foundRow, balanceCol).value = newRemaining;
+      }
+      await sheet.saveUpdatedCells();
+      console.log(`  ✅ Токены сохранены`);
+    } catch (e) {
+      console.error(`  ❌ Ошибка сохранения токенов: ${e.message}`);
+    }
+
+    // ============================================================
+    // ШАГ 17: Отправляем ответ ИИ в Telegram
+    // ============================================================
+    console.log('\n📤 ШАГ 17: Ответ ИИ в Telegram');
+
+    if (tgToken && tgChatId) {
+      try {
+        const replyBody = {
+          chat_id: tgChatId,
+          text: `🤖 ИИ ответил:\n${botText}`,
+        };
+        if (threadId) replyBody.message_thread_id = threadId;
+
+        await fetch(`https://api.telegram.org/bot${tgToken}/sendMessage`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(replyBody)
+        });
+        console.log(`  ✅ Ответ отправлен`);
+      } catch (e) {
+        console.error(`  ❌ Ошибка: ${e.message}`);
+      }
+    }
+
+    // ============================================================
+    // ШАГ 18: Возвращаем ответ виджету
+    // ============================================================
+    console.log('\n═══════════════════════════════════════');
+    console.log('✅ ЗАПРОС УСПЕШНО ОБРАБОТАН');
+    console.log('═══════════════════════════════════════\n');
+
+    return res.status(200).json({
+      text: botText,
+      aiDisabled: false,
+      avatarUrl: avatarUrl || null,
+      tokenInfo: {
+        spent: newSpent,
+        remaining: newRemaining,
+        balance: tokenBalanceNum
+      }
     });
-
-    return res.status(200).json({ ok: true });
 
   } catch (error) {
-    console.error('❌ Webhook error:', error.message);
-    return res.status(200).end();
+    console.error('❌ КРИТИЧЕСКАЯ ОШИБКА:', error.message);
+    return res.status(500).json({
+      error: "Ошибка сервера",
+      message: error.message
+    });
   }
 };
