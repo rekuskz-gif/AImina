@@ -215,8 +215,8 @@
                 .amina-panel {
                     position: fixed;
                     bottom: 0; right: 0;
-                    width: 760px;
-                    height: 1160px;
+                    width: 380px;
+                    height: 580px;
                     background: white;
                     border-radius: 16px 16px 0 0;
                     box-shadow: 0 -4px 30px rgba(0,0,0,0.15);
