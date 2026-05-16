@@ -307,9 +307,9 @@
                     // Проверяем что это номер казахстана (начинается с 7)
                     if (!phone.match(/^7/)) return match;
                     
-                    const whatsappText = encodeURIComponent(
-                        `Здравствуйте! Я с сайта.\nНомер диалога: #${dialogNum}`
-                    );
+   const whatsappText = encodeURIComponent(
+    `Здравствуйте! Я с сайта.\nХочу продолжения диалог: ${clientId}  #${dialogNum}`
+     );
                     const whatsappUrl = `https://wa.me/${phone}?text=${whatsappText}`;
                     
                     return `<a href="${whatsappUrl}" target="_blank" style="color: #007bff; font-weight: bold; text-decoration: underline; cursor: pointer;">📱 ${match}</a>`;
