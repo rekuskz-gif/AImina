@@ -553,3 +553,4 @@
             console.error('\n❌ ОШИБКА:', error.message);
         }
     }
+})();
