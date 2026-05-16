@@ -187,7 +187,7 @@
             const sessionId = getSessionId();
             
             console.log('ЭТАП 4: Загрузка истории сообщений...');
-            const historyRef = db.ref(`chats/${clientId}/${sessionId}`);
+            const historyRef = db.ref(`chats/${clientId}/${sessionId}/messages`);
             console.log(`📝 Firebase путь: chats/${clientId}/${sessionId}`);
 
             let chatHistory = [];
