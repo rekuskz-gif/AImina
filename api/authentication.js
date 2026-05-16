@@ -226,35 +226,46 @@ module.exports = async (req, res) => {
 
     console.log(`  Диалог #${dialogNum}`);
 
-    // ================================================================
-    // ШАГ 11: Тема Telegram
-    // ================================================================
-    console.log('\n📱 ШАГ 11: Тема Telegram');
-    
-    const threadIdRef = db.ref(`settings/${clientId}/${sessionId}/threadId`);
-    const threadIdSnap = await threadIdRef.once('value');
-    let threadId = threadIdSnap.val();
+// ================================================================
+// ШАГ 11: Тема Telegram и сохраняем данные в Firebase
+// ================================================================
+console.log('\n📱 ШАГ 11: Тема Telegram');
 
-    if (!threadId && tgToken && tgChatId) {
-      try {
-        const topicRes = await fetch(`https://api.telegram.org/bot${tgToken}/createForumTopic`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            chat_id: tgChatId,
-            name: `Диалог #${dialogNum} [${clientId}]`,
-          })
-        });
-        const topicData = await topicRes.json();
-        if (topicData.ok) {
-          threadId = topicData.result.message_thread_id;
-          await threadIdRef.set(threadId);
-          console.log(`  ✅ Тема создана`);
-        }
-      } catch (e) {
-        console.error(`  Ошибка: ${e.message}`);
-      }
+const threadIdRef = db.ref(`settings/${clientId}/${sessionId}/threadId`);
+const threadIdSnap = await threadIdRef.once('value');
+let threadId = threadIdSnap.val();
+
+// 🎯 СОХРАНЯЕМ НОМЕР ДИАЛОГА В FIREBASE
+const dialogNumRef = db.ref(`chats/${clientId}/${sessionId}/dialogNumber`);
+await dialogNumRef.set(dialogNum);
+console.log(`  ✅ Номер диалога #${dialogNum} сохранён в Firebase`);
+
+// 🎯 СОХРАНЯЕМ WHATSAPP НОМЕР В FIREBASE
+const whatsappRef = db.ref(`chats/${clientId}/${sessionId}/whatsappPhone`);
+await whatsappRef.set(whatsappPhone);
+console.log(`  ✅ WhatsApp ${whatsappPhone} сохранён в Firebase`);
+
+if (!threadId && tgToken && tgChatId) {
+  try {
+    const topicRes = await fetch(`https://api.telegram.org/bot${tgToken}/createForumTopic`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: tgChatId,
+        name: `Диалог #${dialogNum} [${clientId}]`,
+      })
+    });
+    const topicData = await topicRes.json();
+    if (topicData.ok) {
+      threadId = topicData.result.message_thread_id;
+      await threadIdRef.set(threadId);
+      console.log(`  ✅ Тема создана`);
     }
+  } catch (e) {
+    console.error(`  Ошибка: ${e.message}`);
+  }
+}
+    
 
     // ================================================================
     // ШАГ 12: Отправляем в Telegram
@@ -324,29 +335,38 @@ module.exports = async (req, res) => {
       });
     }
 
-    // ================================================================
-    // ШАГ 14: Читаем промпт
-    // ================================================================
-    console.log('\n📄 ШАГ 14: Читаем промпт');
-    
-    let systemPrompt = 'Ты полезный помощник. Отвечай кратко.';
+// ================================================================
+// ШАГ 14: Читаем промпт
+// ================================================================
+console.log('\n📄 ШАГ 14: Читаем промпт');
 
-    if (googleDocId) {
-      try {
-        const docsClient = google.docs({ version: 'v1', auth });
-        const docRes = await docsClient.documents.get({ documentId: googleDocId });
-        systemPrompt = docRes.data.body.content
-          .filter(block => block.paragraph)
-          .map(block => block.paragraph.elements
-            .map(el => el.textRun ? el.textRun.content : '')
-            .join(''))
-          .join('')
-          .trim();
-        console.log(`  ✅ Загружен (${systemPrompt.length} символов)`);
-      } catch (e) {
-        console.error(`  Ошибка: ${e.message}`);
-      }
+let systemPrompt = 'Ты полезный помощник. Отвечай кратко.';
+let whatsappPhone = '77771234567'; // 🎯 ПЕРЕМЕННАЯ ДЛЯ ВАТЦАПА
+
+if (googleDocId) {
+  try {
+    const docsClient = google.docs({ version: 'v1', auth });
+    const docRes = await docsClient.documents.get({ documentId: googleDocId });
+    systemPrompt = docRes.data.body.content
+      .filter(block => block.paragraph)
+      .map(block => block.paragraph.elements
+        .map(el => el.textRun ? el.textRun.content : '')
+        .join(''))
+      .join('')
+      .trim();
+    
+    // 🎯 ПАРСИМ ВАТЦАП ИЗ ПРОМТА
+    const whatsappMatch = systemPrompt.match(/WhatsApp[:\s]+(\d{10,})/i);
+    if (whatsappMatch) {
+      whatsappPhone = whatsappMatch[1];
+      console.log(`  📱 WhatsApp найден: ${whatsappPhone}`);
     }
+    
+    console.log(`  ✅ Загружен (${systemPrompt.length} символов)`);
+  } catch (e) {
+    console.error(`  Ошибка: ${e.message}`);
+  }
+}
 
     // ================================================================
     // ШАГ 15: Подготавливаем историю
