@@ -21,7 +21,6 @@ if (!admin.apps.length) {
 }
 
 // Вспомогательная функция отправки сообщения в Телеграм
-// с подробным логированием запроса и ответа
 async function sendTgMessage(tgToken, body) {
   console.log('📤 Отправляем в Телеграм:', JSON.stringify(body));
   const res = await fetch(`https://api.telegram.org/bot${tgToken}/sendMessage`, {
@@ -48,10 +47,8 @@ module.exports = async (req, res) => {
       const tgToken = process.env.TG_BOT_TOKEN;
       const db = admin.database();
 
-      // Логируем полный chat объект для отладки
       console.log('🔍 chat:', JSON.stringify(callback_query.message.chat));
 
-      // chatId — ID группы куда отправляем уведомления
       const chatId = String(callback_query.message.chat.id);
       console.log('🔍 chatId:', chatId);
 
@@ -68,7 +65,6 @@ module.exports = async (req, res) => {
       // ---- Кнопка "Выключить ИИ" ----
       if (action === 'off') {
 
-        // Сначала отвечаем на кнопку — до 10 секунд!
         await fetch(`https://api.telegram.org/bot${tgToken}/answerCallbackQuery`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -78,11 +74,9 @@ module.exports = async (req, res) => {
           })
         });
 
-        // Меняем статус в Firebase
         await aiEnabledRef.set(false);
         console.log('⏸️ ИИ выключен для', clientId, sessionId);
 
-        // Отправляем уведомление в чат
         await sendTgMessage(tgToken, {
           chat_id: chatId,
           text: `🔴 ИИ выключен для [${clientId}]\nМенеджер отвечает вручную`,
@@ -97,7 +91,6 @@ module.exports = async (req, res) => {
       // ---- Кнопка "Включить ИИ" ----
       } else if (action === 'on') {
 
-        // Сначала отвечаем на кнопку
         await fetch(`https://api.telegram.org/bot${tgToken}/answerCallbackQuery`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -107,11 +100,9 @@ module.exports = async (req, res) => {
           })
         });
 
-        // Меняем статус в Firebase
         await aiEnabledRef.set(true);
         console.log('▶️ ИИ включён для', clientId, sessionId);
 
-        // Отправляем уведомление в чат
         await sendTgMessage(tgToken, {
           chat_id: chatId,
           text: `🟢 ИИ включён для [${clientId}]\nБот отвечает автоматически`,
@@ -126,7 +117,6 @@ module.exports = async (req, res) => {
       // ---- Кнопка "История" ----
       } else if (action === 'history') {
 
-        // Сначала отвечаем на кнопку
         await fetch(`https://api.telegram.org/bot${tgToken}/answerCallbackQuery`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -136,7 +126,6 @@ module.exports = async (req, res) => {
           })
         });
 
-        // Читаем историю из Firebase
         const historyRef = db.ref(`chats/${clientId}/${sessionId}`);
         const snap = await historyRef.once('value');
         const val = snap.val();
@@ -184,8 +173,10 @@ module.exports = async (req, res) => {
     // ====================================================
     if (!message || !message.text) return res.status(200).end();
 
-    // Игнорируем сообщения от ботов
-    if (message.from && message.from.is_bot) return res.status(200).end();
+    // 🔧 FIX: Пропускаем анонимные ответы от имени группы
+    // Раньше: is_bot блокировал анонимных админов группы
+    // Теперь: блокируем только настоящих ботов у которых нет sender_chat
+    if (message.from && message.from.is_bot && !message.sender_chat) return res.status(200).end();
 
     // Только Reply сообщения
     if (!message.reply_to_message) return res.status(200).end();
