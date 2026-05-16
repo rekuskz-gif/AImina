@@ -493,7 +493,7 @@
 
                     if (result.aiDisabled) {
                         console.log('⏸️ ИИ выключен');
-                        addMsg('Менеджер ответит вам в ближайшее время...', 'bot');
+                        addMsg('', 'bot');
                         return;
                     }
 
