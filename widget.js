@@ -147,7 +147,7 @@
 
     const desktopStyles = `
         .amina-widget { bottom: 20px; right: 20px; }
-        .amina-btn { width: 138px; height: 138px; }
+        .amina-btn { width: 135px; height: 135px; }
         .amina-btn img { width: 116px; height: 116px; }
         .amina-badge { width: 40px; height: 40px; }
         @keyframes pulse-desktop { 0% { box-shadow: 0 0 0 0 rgba(0,0,0,0.2); } 70% { box-shadow: 0 0 0 92px rgba(0,0,0,0); } 100% { box-shadow: 0 0 0 0 rgba(0,0,0,0); } }
