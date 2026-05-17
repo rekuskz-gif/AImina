@@ -152,7 +152,7 @@
         .amina-badge { width: 40px; height: 40px; }
         @keyframes pulse-desktop { 0% { box-shadow: 0 0 0 0 rgba(0,0,0,0.2); } 70% { box-shadow: 0 0 0 92px rgba(0,0,0,0); } 100% { box-shadow: 0 0 0 0 rgba(0,0,0,0); } }
         .amina-btn { animation: pulse-desktop 2s infinite !important; }
-        .amina-panel { bottom: 8px; right: 20px; width: 380px; height: 610px; border-radius: 16px; }
+        .amina-panel { bottom: 8px; right: 20px; width: 380px; height: 590px; border-radius: 16px; }
         .amina-panel-header-name { font-size: 15px; }
         .amina-panel-header img { width: 36px; height: 36px; }
     `;
